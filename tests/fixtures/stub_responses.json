@@ -1,0 +1,136 @@
+{
+    "refusalkeywords": [
+        "refuse",
+        "joke",
+        "poem",
+        "weather"
+    ],
+    "vocabulary": [
+        "access",
+        "activity",
+        "activities",
+        "assignment",
+        "category",
+        "categories",
+        "chart",
+        "cohort",
+        "cohorts",
+        "completion",
+        "completions",
+        "count",
+        "course",
+        "courses",
+        "day",
+        "enrolment",
+        "enrolments",
+        "grade",
+        "grades",
+        "list",
+        "logged",
+        "login",
+        "logins",
+        "module",
+        "modules",
+        "month",
+        "quiz",
+        "report",
+        "role",
+        "roles",
+        "site",
+        "student",
+        "students",
+        "table",
+        "teacher",
+        "teachers",
+        "user",
+        "users",
+        "week",
+        "year"
+    ],
+    "responses": {
+        "list": {
+            "status": "chart",
+            "name": "Users who never logged in",
+            "sql": "SELECT u.lastname AS lastname, u.firstname AS firstname, u.email AS email FROM {user} u WHERE u.deleted = :deleted AND u.lastlogin = :never ORDER BY u.lastname",
+            "params": {
+                "deleted": 0,
+                "never": 0
+            },
+            "chart": {
+                "type": "table",
+                "title": "Users who never logged in",
+                "labelcolumn": "",
+                "labelformat": "text",
+                "series": []
+            },
+            "notes": "Suspended users are included."
+        },
+        "slow": {
+            "status": "chart",
+            "name": "Slow example query",
+            "sql": "SELECT r.shortname AS rolename, COUNT(*) AS total FROM {role} r, {course} c, {user} u WHERE u.deleted = :deleted GROUP BY r.shortname ORDER BY r.shortname",
+            "params": {
+                "deleted": 0
+            },
+            "chart": {
+                "type": "bar",
+                "title": "Slow example query",
+                "labelcolumn": "rolename",
+                "labelformat": "text",
+                "series": [
+                    {
+                        "column": "total",
+                        "label": "Rows"
+                    }
+                ],
+                "xlabel": "Role",
+                "ylabel": "Rows"
+            },
+            "notes": "Every role is paired with every course and every user, so this query is deliberately heavy."
+        },
+        "wrongtable": {
+            "status": "chart",
+            "name": "Sessions per user",
+            "sql": "SELECT u.username AS username, COUNT(s.id) AS total FROM {user} u JOIN {sessions} s ON s.userid = u.id GROUP BY u.username ORDER BY total DESC",
+            "params": {},
+            "chart": {
+                "type": "bar",
+                "title": "Sessions per user",
+                "labelcolumn": "username",
+                "labelformat": "text",
+                "series": [
+                    {
+                        "column": "total",
+                        "label": "Sessions"
+                    }
+                ],
+                "xlabel": "User",
+                "ylabel": "Sessions"
+            },
+            "notes": "Uses a table outside the allowed list, so the first attempt is rejected and retried."
+        },
+        "default": {
+            "status": "chart",
+            "name": "Users per course",
+            "sql": "SELECT c.fullname AS coursename, COUNT(DISTINCT ue.userid) AS total FROM {course} c JOIN {enrol} e ON e.courseid = c.id JOIN {user_enrolments} ue ON ue.enrolid = e.id WHERE c.id <> :siteid GROUP BY c.fullname ORDER BY c.fullname",
+            "params": {
+                "siteid": 1
+            },
+            "chart": {
+                "type": "bar",
+                "title": "Users per course",
+                "labelcolumn": "coursename",
+                "labelformat": "text",
+                "series": [
+                    {
+                        "column": "total",
+                        "label": "Users"
+                    }
+                ],
+                "xlabel": "Course",
+                "ylabel": "Users"
+            },
+            "notes": "Counts enrolled users, whatever the enrolment status."
+        }
+    }
+}

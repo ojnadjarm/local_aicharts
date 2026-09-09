@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details for local_aicharts.
+ * Message provider definitions for local_aicharts.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
@@ -24,8 +24,12 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026090807;
-$plugin->requires  = 2025100600; // Moodle 5.1.
-$plugin->component = 'local_aicharts';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.0.0';
+$messageproviders = [
+    'scheduledresult' => [
+        'capability' => 'local/aicharts:receiveresults',
+        'defaults' => [
+            'email' => MESSAGE_PERMITTED + MESSAGE_DEFAULT_ENABLED,
+            'popup' => MESSAGE_PERMITTED + MESSAGE_DEFAULT_ENABLED,
+        ],
+    ],
+];

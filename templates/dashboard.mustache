@@ -1,0 +1,130 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/dashboard
+
+    The chart dashboard: heading, toolbar and either the card grid or the list.
+
+    Context variables required for this template:
+    * tabs - The rendered Charts / Settings tabs.
+    * listview - Whether the items are shown as a list instead of cards.
+    * canmanage - Whether the user may add and change charts.
+    * hascharts - Whether any chart is saved.
+    * showfilter - Whether the name filter is shown.
+    * gridurl - URL of the grid view.
+    * listurl - URL of the list view.
+    * cronurl - URL of the scheduled tasks page.
+    * stalecron - Whether cron is late while items wait for it.
+    * stalecronmessage - How long ago cron ran.
+    * cards - The cards of the grid view.
+    * rows - The rows of the list view.
+
+    Example context (json):
+    {
+        "tabs": "",
+        "listview": false,
+        "canmanage": true,
+        "hascharts": true,
+        "showfilter": false,
+        "gridurl": "/local/aicharts/index.php?view=grid",
+        "listurl": "/local/aicharts/index.php?view=list",
+        "cronurl": "/admin/tool/task/scheduledtasks.php",
+        "stalecron": false,
+        "cards": [
+            {
+                "id": 1,
+                "name": "Enrolments per course",
+                "dataname": "enrolments per course",
+                "icon": "fa-chart-column",
+                "iconlabel": "Bar chart",
+                "menu": "",
+                "live": true,
+                "paused": false,
+                "deferred": true,
+                "maxrows": 500
+            }
+        ],
+        "rows": []
+    }
+}}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <h2 class="h2 mb-0">
+        <i class="icon fa fa-chart-column" aria-hidden="true"></i>{{#str}}dashboard, local_aicharts{{/str}}
+    </h2>
+    {{#canmanage}}
+        <button type="button" class="btn btn-primary" data-action="addchart">
+            <i class="icon fa fa-plus" aria-hidden="true"></i>{{#str}}addchart, local_aicharts{{/str}}
+        </button>
+    {{/canmanage}}
+</div>
+{{{tabs}}}
+{{#hascharts}}
+    <p class="text-muted small">{{#str}}dashboardintro, local_aicharts{{/str}}</p>
+    {{#stalecron}}
+        <div class="local-aicharts-statebox d-flex gap-2 mb-3" role="status">
+            <i class="icon fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+            <div>{{stalecronmessage}} <a href="{{cronurl}}">{{#str}}checkcron, local_aicharts{{/str}}</a></div>
+        </div>
+    {{/stalecron}}
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        {{#showfilter}}
+            <input type="search" class="form-control local-aicharts-filter" data-region="aic-filter"
+                aria-label="{{#str}}filtercharts, local_aicharts{{/str}}"
+                placeholder="{{#str}}filtercharts, local_aicharts{{/str}}">
+        {{/showfilter}}
+        <nav class="ms-auto" aria-label="{{#str}}view{{/str}}">
+            <a href="{{gridurl}}" class="p-2{{^listview}} active{{/listview}}"{{^listview}} aria-current="page"{{/listview}}>
+                <i class="icon fa fa-table-cells-large" aria-hidden="true"></i>{{#str}}viewgrid, local_aicharts{{/str}}
+            </a>
+            <a href="{{listurl}}" class="p-2{{#listview}} active{{/listview}}"{{#listview}} aria-current="page"{{/listview}}>
+                <i class="icon fa fa-list" aria-hidden="true"></i>{{#str}}viewlist, local_aicharts{{/str}}
+            </a>
+        </nav>
+    </div>
+    <p class="text-muted small" data-region="aic-nomatch" hidden>{{#str}}nomatch, local_aicharts{{/str}}</p>
+    <p class="text-muted small" data-region="aic-count" role="status" aria-live="polite" hidden></p>
+    {{#listview}}
+        {{> local_aicharts/chart_list}}
+    {{/listview}}
+    {{^listview}}
+        <div class="local-aicharts-cards">
+            {{#cards}}
+                {{> local_aicharts/chart_card}}
+            {{/cards}}
+        </div>
+    {{/listview}}
+{{/hascharts}}
+{{^hascharts}}
+    <div class="border rounded p-5 text-center">
+        <i class="icon fa fa-chart-column fa-3x text-muted" aria-hidden="true"></i>
+        <h3 class="h3 mt-3">{{#str}}nocharts, local_aicharts{{/str}}</h3>
+        <p class="text-muted">{{#str}}nochartsintro, local_aicharts{{/str}}</p>
+        {{#canmanage}}
+            <button type="button" class="btn btn-primary" data-action="addchart">
+                <i class="icon fa fa-plus" aria-hidden="true"></i>{{#str}}addchart, local_aicharts{{/str}}
+            </button>
+        {{/canmanage}}
+        {{^canmanage}}
+            <p class="mb-0">{{#str}}emptynopermission, local_aicharts{{/str}}</p>
+        {{/canmanage}}
+    </div>
+{{/hascharts}}
+{{#js}}
+    require(['local_aicharts/dashboard'], function(Dashboard) {
+        Dashboard.init();
+    });
+{{/js}}

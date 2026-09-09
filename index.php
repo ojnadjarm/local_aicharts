@@ -15,17 +15,26 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details for local_aicharts.
+ * The AI charts dashboard.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
+require(__DIR__ . '/../../config.php');
+require_once($CFG->libdir . '/adminlib.php');
 
-$plugin->version   = 2026090807;
-$plugin->requires  = 2025100600; // Moodle 5.1.
-$plugin->component = 'local_aicharts';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.0.0';
+$view = optional_param('view', '', PARAM_ALPHA);
+$skiplive = optional_param('skiplive', 0, PARAM_BOOL);
+
+admin_externalpage_setup('local_aicharts_dashboard');
+
+if ($view === 'grid' || $view === 'list') {
+    set_user_preference('local_aicharts_view', $view);
+    redirect(new moodle_url('/local/aicharts/index.php'));
+}
+
+echo $OUTPUT->header();
+echo $OUTPUT->render(new \local_aicharts\output\dashboard(null, $skiplive));
+echo $OUTPUT->footer();

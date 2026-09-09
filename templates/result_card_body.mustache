@@ -1,0 +1,94 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/result_card_body
+
+    The body of a chart card: the result, or the reason there is none.
+
+    Context variables required for this template:
+    * id - The chart id.
+    * paused - Whether the chart is paused.
+    * deferred - Whether the chart is loaded on request.
+    * failed - Whether the run failed.
+    * errormessage - Why the run failed.
+    * norows - Whether the run returned no rows.
+    * notrunyet - Whether a scheduled chart has no stored result.
+    * queued - Whether a run of the chart waits for cron.
+    * nextrunformatted - When the chart runs next.
+    * refreshurl - Link reloading the dashboard.
+    * body - The rendered chart or result table.
+
+    Example context (json):
+    {
+        "id": 1,
+        "paused": false,
+        "deferred": true,
+        "failed": false,
+        "body": ""
+    }
+}}
+{{#paused}}
+    <div class="local-aicharts-statebox d-flex gap-2" role="status">
+        <i class="icon fa fa-pause mt-1" aria-hidden="true"></i>
+        <div>{{#str}}pausedstate, local_aicharts{{/str}}</div>
+    </div>
+{{/paused}}
+{{#deferred}}
+    <div class="local-aicharts-statebox d-flex gap-2 mb-3" role="status">
+        <i class="icon fa fa-circle-info mt-1" aria-hidden="true"></i>
+        <div>{{#str}}notloaded, local_aicharts{{/str}}</div>
+    </div>
+    <button type="button" class="btn btn-secondary" data-action="loadchart" data-id="{{id}}">
+        {{#str}}loadchart, local_aicharts{{/str}}
+    </button>
+{{/deferred}}
+{{#notrunyet}}
+    <div class="local-aicharts-statebox d-flex gap-2" role="status">
+        <i class="icon fa fa-clock mt-1" aria-hidden="true"></i>
+        <div>
+            {{#queued}}
+                {{#str}}queuedstate, local_aicharts{{/str}}
+                <a href="{{refreshurl}}">{{#str}}refresh, local_aicharts{{/str}}</a>
+            {{/queued}}
+            {{^queued}}
+                {{#str}}notrunyet, local_aicharts{{/str}}
+                <div>{{nextrunformatted}}</div>
+            {{/queued}}
+        </div>
+    </div>
+{{/notrunyet}}
+{{#failed}}
+    <div class="local-aicharts-statebox d-flex gap-2" role="status">
+        <i class="icon fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+        <div>
+            {{#str}}chartfailed, local_aicharts{{/str}}
+            <details class="mt-1">
+                <summary class="small">{{#str}}errordetails, local_aicharts{{/str}}</summary>
+                <p class="small text-muted mb-0 mt-1">{{errormessage}}</p>
+            </details>
+        </div>
+    </div>
+{{/failed}}
+{{#norows}}
+    <div class="local-aicharts-statebox d-flex gap-2" role="status">
+        <i class="icon fa fa-circle-info mt-1" aria-hidden="true"></i>
+        <div>{{#str}}norows, local_aicharts{{/str}}</div>
+    </div>
+{{/norows}}
+{{#body}}
+    <div class="local-aicharts-chart">{{{body}}}</div>
+{{/body}}

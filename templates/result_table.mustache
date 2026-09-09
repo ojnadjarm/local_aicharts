@@ -1,0 +1,101 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/result_table
+
+    Query result rows as a table, with the first rows inline and the rest behind a details element.
+
+    Context variables required for this template:
+    * head - Column headings, each with a name and a colcap flag.
+    * inline - Rows shown outside the details element, each with an array of cells.
+    * rest - Rows shown only inside the details element, each with an array of cells.
+    * total - Total number of rows.
+    * hasrows - Whether the result has any row.
+    * hasrest - Whether there are rows beyond the inline ones.
+
+    Example context (json):
+    {
+        "head": [
+            {"name": "Course", "colcap": false},
+            {"name": "Enrolments", "colcap": false}
+        ],
+        "inline": [
+            {"cells": [{"value": "Geography", "colcap": false}, {"value": "12", "colcap": false}]}
+        ],
+        "rest": [
+            {"cells": [{"value": "History", "colcap": false}, {"value": "8", "colcap": false}]}
+        ],
+        "total": 2,
+        "hasrows": true,
+        "hasrest": true
+    }
+}}
+{{#hasrows}}
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                {{#head}}
+                    <th scope="col"{{#colcap}} class="d-none d-sm-table-cell"{{/colcap}}>{{name}}</th>
+                {{/head}}
+            </tr>
+        </thead>
+        <tbody>
+            {{#inline}}
+                <tr>
+                    {{#cells}}
+                        <td{{#colcap}} class="d-none d-sm-table-cell"{{/colcap}}>{{value}}</td>
+                    {{/cells}}
+                </tr>
+            {{/inline}}
+        </tbody>
+    </table>
+    {{#hasrest}}
+        <details>
+            <summary>{{#str}}showallrows, local_aicharts, {{total}}{{/str}}</summary>
+            <div class="table-responsive" style="max-height: 20rem;">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            {{#head}}
+                                <th scope="col">{{name}}</th>
+                            {{/head}}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{#inline}}
+                            <tr>
+                                {{#cells}}
+                                    <td>{{value}}</td>
+                                {{/cells}}
+                            </tr>
+                        {{/inline}}
+                        {{#rest}}
+                            <tr>
+                                {{#cells}}
+                                    <td>{{value}}</td>
+                                {{/cells}}
+                            </tr>
+                        {{/rest}}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    {{/hasrest}}
+{{/hasrows}}
+{{^hasrows}}
+    <p class="text-muted">{{#str}}norows, local_aicharts{{/str}}</p>
+{{/hasrows}}
