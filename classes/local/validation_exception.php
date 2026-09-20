@@ -14,18 +14,25 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace local_aicharts\local;
+
+use moodle_exception;
+
 /**
- * Version details for local_aicharts.
+ * Thrown when a generated query breaks a validation rule.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
-defined('MOODLE_INTERNAL') || die();
-
-$plugin->version   = 2026090807;
-$plugin->requires  = 2025100600; // Moodle 5.1.
-$plugin->component = 'local_aicharts';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.0.0';
+class validation_exception extends moodle_exception {
+    /**
+     * Constructor.
+     *
+     * @param string $errorcode Language string naming the broken rule.
+     * @param mixed $a Value inserted in the message, usually the offending table, keyword or literal.
+     */
+    public function __construct(string $errorcode, $a = null) {
+        parent::__construct($errorcode, 'local_aicharts', '', $a);
+    }
+}

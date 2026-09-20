@@ -1,0 +1,117 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/chart_card
+
+    One saved chart as a card: type icon, name, actions, result and footer.
+
+    Context variables required for this template:
+    * id - The chart id.
+    * name - The chart name.
+    * dataname - The lower-cased name, used by the filter.
+    * icon - Font Awesome class of the chart type.
+    * iconlabel - Text read instead of the type icon.
+    * menu - The rendered actions menu, empty when there is none.
+    * live - Whether the chart runs when the page loads.
+    * scheduled - Whether the chart runs on a schedule.
+    * schedulelabel - Text read instead of the clock icon.
+    * runmodelabel - The run mode as a footer phrase.
+    * runhourformatted - The run hour as HH:MM.
+    * historyurl - Link to the run history of the chart.
+    * queued - Whether a run of the chart waits for cron.
+    * emailed - Whether the result is sent to recipients.
+    * emailrecipients - Text read instead of the envelope icon.
+    * lastrunformatted - When the shown result was stored.
+    * lastrunfailed - Whether a later run failed.
+    * paused - Whether the chart is paused.
+    * deferred - Whether the chart is loaded on request.
+    * failed - Whether the run failed.
+    * errormessage - Why the run failed.
+    * notrunyet - Whether the chart has no stored result.
+    * nextrunformatted - When the chart runs next.
+    * refreshurl - Link reloading the dashboard.
+    * hasresult - Whether the card shows a result.
+    * body - The rendered chart or result table.
+    * rowsline - Rows returned and the row limit.
+    * maxrows - The row limit.
+
+    Example context (json):
+    {
+        "id": 1,
+        "name": "Enrolments per course",
+        "dataname": "enrolments per course",
+        "icon": "fa-chart-column",
+        "iconlabel": "Bar chart",
+        "menu": "",
+        "live": true,
+        "scheduled": false,
+        "emailed": false,
+        "paused": false,
+        "deferred": true,
+        "maxrows": 500
+    }
+}}
+<div class="card h-100" data-region="aic-card" data-id="{{id}}" data-name="{{dataname}}">
+    <div class="card-header d-flex align-items-center gap-2">
+        <i class="icon fa {{icon}} m-0" aria-hidden="true"></i>
+        <span class="visually-hidden">{{iconlabel}}</span>
+        {{#scheduled}}
+            <i class="icon fa fa-clock m-0 text-muted" aria-hidden="true"></i>
+            <span class="visually-hidden">{{schedulelabel}}</span>
+        {{/scheduled}}
+        {{#emailed}}
+            <i class="icon fa fa-envelope m-0 text-muted" aria-hidden="true"></i>
+            <span class="visually-hidden">{{emailrecipients}}</span>
+        {{/emailed}}
+        <h3 class="h6 mb-0 flex-grow-1">{{name}}</h3>
+        {{{menu}}}
+    </div>
+    <div class="card-body" data-region="aic-card-body">
+        {{> local_aicharts/result_card_body}}
+    </div>
+    <div class="card-footer text-muted small">
+        {{#paused}}{{#str}}paused, local_aicharts{{/str}}{{/paused}}
+        {{#deferred}}
+            <span data-region="aic-deferred-note">{{#str}}notloadedlimit, local_aicharts, {{maxrows}}{{/str}}</span>
+        {{/deferred}}
+        {{#hasresult}}
+            <div class="d-flex justify-content-between flex-wrap gap-1">
+                <span>{{rowsline}}</span>
+                {{#live}}<span>{{#str}}ranjustnow, local_aicharts{{/str}}</span>{{/live}}
+            </div>
+        {{/hasresult}}
+        {{#scheduled}}
+            {{^paused}}
+                <div class="mt-1">
+                    {{#lastrunformatted}}{{.}} · {{/lastrunformatted}}
+                    {{runmodelabel}} · {{runhourformatted}}
+                    {{#queued}} · {{#str}}queued, local_aicharts{{/str}}{{/queued}}
+                </div>
+                {{#lastrunfailed}}
+                    <details class="mt-1">
+                        <summary>{{#str}}lastrunfailed, local_aicharts{{/str}}</summary>
+                        <p class="mb-0 mt-1">{{errormessage}}</p>
+                    </details>
+                {{/lastrunfailed}}
+            {{/paused}}
+            <div class="mt-1"><a href="{{historyurl}}">{{#str}}runhistory, local_aicharts{{/str}}</a></div>
+        {{/scheduled}}
+        {{#live}}
+            {{^paused}}<div class="mt-1">{{#str}}livenotice, local_aicharts{{/str}}</div>{{/paused}}
+        {{/live}}
+    </div>
+</div>

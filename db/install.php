@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version details for local_aicharts.
+ * Post installation hook for local_aicharts.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
@@ -24,8 +24,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026090807;
-$plugin->requires  = 2025100600; // Moodle 5.1.
-$plugin->component = 'local_aicharts';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.0.0';
+/**
+ * Seeds the charts shipped with the plugin.
+ */
+function xmldb_local_aicharts_install(): void {
+    \local_aicharts\local\default_charts::seed();
+}

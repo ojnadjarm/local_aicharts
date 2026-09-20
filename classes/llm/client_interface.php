@@ -14,18 +14,22 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace local_aicharts\llm;
+
 /**
- * Version details for local_aicharts.
+ * Transport a chart request to a model and return its raw answer.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
-defined('MOODLE_INTERNAL') || die();
-
-$plugin->version   = 2026090807;
-$plugin->requires  = 2025100600; // Moodle 5.1.
-$plugin->component = 'local_aicharts';
-$plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.0.0';
+interface client_interface {
+    /**
+     * Send the messages and return the answer.
+     *
+     * @param array $messages List of ['role' => string, 'content' => string].
+     * @param array $schema JSON schema the answer must match.
+     * @return llm_response
+     */
+    public function generate(array $messages, array $schema): llm_response;
+}

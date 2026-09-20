@@ -1,0 +1,112 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/email_result
+
+    The result of a scheduled run as the HTML body of a message. Inline styles only, 600 px wide.
+
+    Context variables required for this template:
+    * sitename - Name of the site.
+    * name - Name of the chart.
+    * runline - Run date with the row count or the failure.
+    * failed - Whether the run failed.
+    * errormessage - Why the run failed.
+    * hasimage - Whether a chart image is embedded.
+    * imagedata - The chart image as base64 encoded PNG.
+    * imagealt - Alternative text of the chart image.
+    * hasrows - Whether the result has rows to show.
+    * head - Column headings, each with a name.
+    * rows - The rows shown, each with an array of cells holding a value.
+    * hasmore - Whether the result has more rows than are shown.
+    * morerows - How many rows are not shown.
+    * historyurl - Link to the run history of this run.
+    * hasattachment - Whether the CSV travels with the message.
+    * preferencesurl - Link to the notification preferences.
+
+    Example context (json):
+    {
+        "sitename": "Moodle site",
+        "name": "Users per role",
+        "runline": "Run of 8 September 2026, 6:00 · 4 rows",
+        "failed": false,
+        "errormessage": "",
+        "hasimage": false,
+        "imagedata": "",
+        "imagealt": "Chart of Users per role.",
+        "hasrows": true,
+        "head": [{"name": "role"}, {"name": "users"}],
+        "rows": [{"cells": [{"value": "Student"}, {"value": "1240"}]}],
+        "hasmore": true,
+        "morerows": 32,
+        "historyurl": "https://example.com/local/aicharts/history.php?id=1&resultid=2",
+        "hasattachment": true,
+        "preferencesurl": "https://example.com/message/notificationpreferences.php"
+    }
+}}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f8f9fa; padding: 24px 0;">
+    <tr>
+        <td align="center">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width: 600px; max-width: 100%; background-color: #ffffff; border: 1px solid #dee2e6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1d2125;">
+                <tr>
+                    <td style="padding: 24px;">
+                        <p style="margin: 0 0 16px 0; font-size: 12px; color: #6a737b;">{{#str}}pluginname, local_aicharts{{/str}} &middot; {{sitename}}</p>
+                        <h1 style="margin: 0 0 4px 0; font-size: 22px; font-weight: 500; color: #1d2125;">{{name}}</h1>
+                        <p style="margin: 0 0 20px 0; font-size: 13px; color: #6a737b;">{{runline}}</p>
+                        {{#failed}}
+                            <p style="margin: 0 0 20px 0; font-size: 14px; color: #6a737b;">{{errormessage}}</p>
+                        {{/failed}}
+                        {{#hasimage}}
+                            <img src="data:image/png;base64,{{imagedata}}" alt="{{imagealt}}" width="560" style="width: 560px; max-width: 100%; height: auto; display: block; margin: 0 0 20px 0;">
+                        {{/hasimage}}
+                        {{#hasrows}}
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse: collapse; font-size: 13px;">
+                                <tr>
+                                    {{#head}}
+                                        <th align="left" style="padding: 6px 8px; border: 1px solid #dee2e6; background-color: #f8f9fa; font-weight: 600;">{{name}}</th>
+                                    {{/head}}
+                                </tr>
+                                {{#rows}}
+                                    <tr>
+                                        {{#cells}}
+                                            <td style="padding: 6px 8px; border: 1px solid #dee2e6;">{{value}}</td>
+                                        {{/cells}}
+                                    </tr>
+                                {{/rows}}
+                            </table>
+                            {{#hasmore}}
+                                <p style="margin: 8px 0 0 0; font-size: 13px; color: #6a737b;">{{#str}}emailmorerows, local_aicharts, {{morerows}}{{/str}}</p>
+                            {{/hasmore}}
+                        {{/hasrows}}
+                        <p style="margin: 24px 0 16px 0;">
+                            <a href="{{historyurl}}" style="display: inline-block; padding: 10px 16px; background-color: #0f6cbf; color: #ffffff; font-size: 14px; text-decoration: none;">{{#str}}emailopenhistory, local_aicharts{{/str}}</a>
+                        </p>
+                        {{^failed}}
+                            <p style="margin: 0 0 16px 0; font-size: 13px; color: #1d2125;">
+                                {{#hasattachment}}{{#str}}emailattached, local_aicharts{{/str}}{{/hasattachment}}
+                                {{^hasattachment}}{{#str}}emailnoattachment, local_aicharts{{/str}}{{/hasattachment}}
+                            </p>
+                        {{/failed}}
+                        <p style="margin: 0; padding-top: 16px; border-top: 1px solid #dee2e6; font-size: 12px; color: #6a737b;">
+                            {{#str}}emailfooter, local_aicharts{{/str}}
+                            <a href="{{preferencesurl}}" style="color: #6a737b;">{{#str}}emailpreferences, local_aicharts{{/str}}</a>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
