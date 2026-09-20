@@ -46,8 +46,7 @@ final class chart_repository_test extends \advanced_testcase {
         $id = chart_repository::save((object) [
             'name' => 'Enrolments per course',
             'prompt' => 'enrolments per course this year',
-            'sqltext' => 'SELECT c.fullname, COUNT(ue.id) FROM {course} c',
-            'params' => '{}',
+            'queries' => [['label' => 'Enrolments', 'sqltext' => 'SELECT c.fullname, COUNT(ue.id) FROM {course} c']],
             'chartjson' => '{"type":"bar"}',
         ]);
 
@@ -61,6 +60,192 @@ final class chart_repository_test extends \advanced_testcase {
         $this->assertGreaterThan(0, $chart->timecreated);
         $this->assertSame($chart->timecreated, $chart->timemodified);
         $this->assertNull(chart_repository::get($id + 100));
+    }
+
+    /**
+     * The queries are stored in the order given and the first one is mirrored into the chart.
+     *
+     * @covers \local_aicharts\local\chart_repository::save
+     */
+    public function test_save_writes_queries_in_order(): void {
+        global $DB;
+
+        $this->setAdminUser();
+
+        $id = chart_repository::save((object) [
+            'name' => 'Enrolments',
+            'prompt' => 'enrolments this year vs last year',
+            'chartjson' => '{"type":"bar"}',
+            'queries' => [
+                ['label' => 'This year', 'sqltext' => 'SELECT 1', 'params' => '{"year": 2026}'],
+                ['label' => 'Last year', 'sqltext' => 'SELECT 2', 'params' => ''],
+            ],
+        ]);
+
+        $rows = array_values($DB->get_records('local_aicharts_query', ['chartid' => $id], 'sortorder'));
+        $this->assertCount(2, $rows);
+        $this->assertSame(['This year', 'Last year'], array_column($rows, 'label'));
+        $this->assertSame(['0', '1'], array_column($rows, 'sortorder'));
+        $this->assertSame('{}', $rows[1]->params);
+    }
+
+    /**
+     * The kind, the points retention and each series hint are stored and read back.
+     *
+     * @covers \local_aicharts\local\chart_repository::save
+     * @covers \local_aicharts\local\chart_repository::get
+     */
+    public function test_save_keeps_hint_and_kind(): void {
+        $this->setAdminUser();
+
+        $id = chart_repository::save((object) [
+            'name' => 'Active users',
+            'prompt' => 'active users',
+            'chartjson' => '{"type":"line"}',
+            'kind' => 'trend',
+            'pointsretention' => 90,
+            'queries' => [
+                ['label' => 'Active', 'hint' => 'users active in the last month', 'sqltext' => 'SELECT 1'],
+                ['label' => 'All', 'sqltext' => 'SELECT 2'],
+            ],
+        ]);
+
+        $chart = chart_repository::get($id);
+
+        $this->assertSame('trend', $chart->kind);
+        $this->assertSame('90', $chart->pointsretention);
+        $this->assertSame('users active in the last month', $chart->queries[0]->hint);
+        $this->assertNull($chart->queries[1]->hint);
+        $this->assertSame('oneshot', chart_repository::get($this->create_chart())->kind);
+    }
+
+    /**
+     * A chart saved without the queries property keeps its query rows.
+     *
+     * @covers \local_aicharts\local\chart_repository::save
+     */
+    public function test_save_without_queries_keeps_rows(): void {
+        global $DB;
+
+        $this->setAdminUser();
+
+        $id = chart_repository::save((object) [
+            'name' => 'Courses',
+            'prompt' => 'courses',
+            'queries' => [['label' => 'Courses', 'sqltext' => 'SELECT 3', 'params' => '']],
+            'chartjson' => '{"type":"bar"}',
+        ]);
+
+        chart_repository::save((object) ['id' => $id, 'name' => 'Renamed']);
+
+        $rows = array_values($DB->get_records('local_aicharts_query', ['chartid' => $id]));
+        $this->assertCount(1, $rows);
+        $this->assertSame('Courses', $rows[0]->label);
+        $this->assertSame('SELECT 3', $rows[0]->sqltext);
+        $this->assertSame('{}', $rows[0]->params);
+        $this->assertSame('Renamed', $DB->get_field('local_aicharts_chart', 'name', ['id' => $id]));
+    }
+
+    /**
+     * Every loaded chart carries its queries in sort order.
+     *
+     * @covers \local_aicharts\local\chart_repository::get
+     * @covers \local_aicharts\local\chart_repository::list_all
+     * @covers \local_aicharts\local\chart_repository::attach_queries
+     */
+    public function test_get_attaches_queries(): void {
+        global $DB;
+
+        $this->setAdminUser();
+
+        $id = $this->create_chart(['name' => 'Two series'], false);
+        $other = $this->create_chart(['name' => 'No series'], false);
+        $DB->insert_record('local_aicharts_query', (object) ['chartid' => $id, 'label' => 'B', 'sqltext' => 'SELECT 2',
+            'params' => '{}', 'sortorder' => 1]);
+        $DB->insert_record('local_aicharts_query', (object) ['chartid' => $id, 'label' => 'A', 'sqltext' => 'SELECT 1',
+            'params' => '{}', 'sortorder' => 0]);
+
+        $chart = chart_repository::get($id);
+        $this->assertSame(['A', 'B'], array_column($chart->queries, 'label'));
+        $this->assertSame('SELECT 1', $chart->queries[0]->sqltext);
+        $this->assertSame([], chart_repository::get($other)->queries);
+
+        $all = chart_repository::list_all();
+        $this->assertSame(['A', 'B'], array_column($all[$id]->queries, 'label'));
+        $this->assertSame([], $all[$other]->queries);
+    }
+
+    /**
+     * Saving a chart again replaces its queries instead of adding to them.
+     *
+     * @covers \local_aicharts\local\chart_repository::save
+     */
+    public function test_save_replaces_queries(): void {
+        global $DB;
+
+        $this->setAdminUser();
+
+        $id = chart_repository::save((object) [
+            'name' => 'Chart',
+            'prompt' => 'a prompt',
+            'chartjson' => '{"type":"bar"}',
+            'queries' => [
+                ['label' => 'One', 'sqltext' => 'SELECT 1', 'params' => '{}'],
+                ['label' => 'Two', 'sqltext' => 'SELECT 2', 'params' => '{}'],
+            ],
+        ]);
+        $chart = chart_repository::get($id);
+        $chart->queries = [['label' => 'Only', 'sqltext' => 'SELECT 9', 'params' => '{}']];
+
+        chart_repository::save($chart);
+
+        $rows = $DB->get_records('local_aicharts_query', ['chartid' => $id]);
+        $this->assertCount(1, $rows);
+        $this->assertSame('Only', reset($rows)->label);
+    }
+
+    /**
+     * Deleting a chart removes its queries and leaves the other charts' ones.
+     *
+     * @covers \local_aicharts\local\chart_repository::delete
+     */
+    public function test_delete_removes_queries(): void {
+        global $DB;
+
+        $this->setAdminUser();
+
+        $keep = chart_repository::save((object) ['name' => 'Keep', 'prompt' => 'p', 'chartjson' => '{}',
+            'queries' => [['label' => 'Keep', 'sqltext' => 'SELECT 1']]]);
+        $drop = chart_repository::save((object) ['name' => 'Drop', 'prompt' => 'p', 'chartjson' => '{}',
+            'queries' => [['label' => 'Drop', 'sqltext' => 'SELECT 2']]]);
+
+        chart_repository::delete($drop);
+
+        $this->assertSame(0, $DB->count_records('local_aicharts_query', ['chartid' => $drop]));
+        $this->assertSame(1, $DB->count_records('local_aicharts_query', ['chartid' => $keep]));
+    }
+
+    /**
+     * Deleting a chart removes its points and leaves the other charts' ones.
+     *
+     * @covers \local_aicharts\local\chart_repository::delete
+     */
+    public function test_delete_removes_points(): void {
+        global $DB;
+
+        $this->setAdminUser();
+
+        $keep = $this->create_chart(['name' => 'Keep']);
+        $drop = $this->create_chart(['name' => 'Drop']);
+        foreach ([$keep, $drop] as $chartid) {
+            $DB->insert_record('local_aicharts_point', (object) ['chartid' => $chartid, 'serieslabel' => 'Users',
+                'timepoint' => time(), 'value' => 3]);
+        }
+
+        chart_repository::delete($drop);
+
+        $this->assertSame(0, $DB->count_records('local_aicharts_point', ['chartid' => $drop]));
+        $this->assertSame(1, $DB->count_records('local_aicharts_point', ['chartid' => $keep]));
     }
 
     /**
@@ -236,9 +421,10 @@ final class chart_repository_test extends \advanced_testcase {
      * Creates a saved chart.
      *
      * @param array $overrides Fields overriding the defaults.
+     * @param bool $withquery Whether the chart gets its single query row.
      * @return int The chart id.
      */
-    private function create_chart(array $overrides = []): int {
+    private function create_chart(array $overrides = [], bool $withquery = true): int {
         global $DB;
 
         $chart = (object) array_merge([
@@ -252,6 +438,20 @@ final class chart_repository_test extends \advanced_testcase {
             'timemodified' => time(),
         ], $overrides);
 
-        return (int) $DB->insert_record('local_aicharts_chart', $chart);
+        $query = (object) [
+            'label' => $chart->name,
+            'sqltext' => $chart->sqltext,
+            'params' => $chart->params,
+            'sortorder' => 0,
+        ];
+        unset($chart->sqltext, $chart->params);
+        $id = (int) $DB->insert_record('local_aicharts_chart', $chart);
+        if (!$withquery) {
+            return $id;
+        }
+        $query->chartid = $id;
+        $DB->insert_record('local_aicharts_query', $query);
+
+        return $id;
     }
 }

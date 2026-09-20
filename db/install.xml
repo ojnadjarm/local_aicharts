@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="local/aicharts/db" VERSION="20260908" COMMENT="XMLDB file for Moodle local/aicharts"
+<XMLDB PATH="local/aicharts/db" VERSION="20260915" COMMENT="XMLDB file for Moodle local/aicharts"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
@@ -12,14 +12,12 @@
         <FIELD NAME="isdefault" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="enabled" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="0 means paused: never run on load and never queued"/>
         <FIELD NAME="prompt" TYPE="text" NOTNULL="true" SEQUENCE="false"/>
-        <FIELD NAME="schemahint" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
-        <FIELD NAME="charthint" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
-        <FIELD NAME="sqlhint" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
-        <FIELD NAME="sqltext" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="The generated SELECT statement"/>
-        <FIELD NAME="params" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="JSON object of named query parameters"/>
         <FIELD NAME="chartjson" TYPE="text" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="runmode" TYPE="char" LENGTH="10" NOTNULL="true" DEFAULT="live" SEQUENCE="false" COMMENT="live, daily, weekly or monthly"/>
         <FIELD NAME="runhour" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="4" SEQUENCE="false" COMMENT="Hour of the day in the site timezone"/>
+        <FIELD NAME="runday" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Weekday 0 to 6 for weekly, day of the month for monthly, 31 meaning the last day"/>
+        <FIELD NAME="kind" TYPE="char" LENGTH="10" NOTNULL="true" DEFAULT="oneshot" SEQUENCE="false" COMMENT="oneshot replaces the data on every run, trend adds one point per series"/>
+        <FIELD NAME="pointsretention" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Points kept per trend chart, 0 meaning the site setting"/>
         <FIELD NAME="maxrows" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="500" SEQUENCE="false"/>
         <FIELD NAME="emailto" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Comma separated user ids"/>
         <FIELD NAME="emailwhen" TYPE="char" LENGTH="10" NOTNULL="true" DEFAULT="always" SEQUENCE="false" COMMENT="always or rows"/>
@@ -81,6 +79,41 @@
       </KEYS>
       <INDEXES>
         <INDEX NAME="chartid-timecreated" UNIQUE="false" FIELDS="chartid, timecreated"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_aicharts_query" COMMENT="The queries of a chart, one series each">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="chartid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="label" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Series name, unique within a chart"/>
+        <FIELD NAME="hint" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="What the author said the query should return"/>
+        <FIELD NAME="sqltext" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="The SELECT statement"/>
+        <FIELD NAME="params" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="JSON object of named query parameters"/>
+        <FIELD NAME="sortorder" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="chartid" TYPE="foreign" FIELDS="chartid" REFTABLE="local_aicharts_chart" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="chartid-sortorder" UNIQUE="false" FIELDS="chartid, sortorder"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="local_aicharts_point" COMMENT="One value per series per run of a trend chart">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="chartid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="resultid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="The stored run that produced the point, null once that run is pruned"/>
+        <FIELD NAME="serieslabel" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timepoint" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="The run time"/>
+        <FIELD NAME="value" TYPE="number" LENGTH="20" NOTNULL="false" SEQUENCE="false" DECIMALS="5" COMMENT="Null when the query returned no row"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="chartid" TYPE="foreign" FIELDS="chartid" REFTABLE="local_aicharts_chart" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="chartid-timepoint" UNIQUE="false" FIELDS="chartid, timepoint"/>
       </INDEXES>
     </TABLE>
   </TABLES>

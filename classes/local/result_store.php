@@ -273,6 +273,7 @@ class result_store {
             self::FILEAREA,
             $result->id
         );
+        point_store::unlink_result($result->id);
         $DB->delete_records(self::TABLE, ['id' => $result->id]);
     }
 

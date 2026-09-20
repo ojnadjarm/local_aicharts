@@ -42,8 +42,11 @@ final class result_store_test extends \advanced_testcase {
         $id = chart_repository::save((object) [
             'name' => 'Users per role',
             'prompt' => 'users per role',
-            'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
-            'params' => '{}',
+            'queries' => [[
+                'label' => 'Users per role',
+                'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
+                'params' => '{}',
+            ]],
             'chartjson' => '{"type":"bar","labels":"shortname","series":["total"]}',
         ]);
 

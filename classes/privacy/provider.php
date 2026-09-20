@@ -31,6 +31,7 @@ use core_privacy\local\request\contextlist;
 use core_privacy\local\request\transform;
 use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
+use local_aicharts\local\chart_repository;
 
 /**
  * Privacy Subsystem implementation for local_aicharts.
@@ -60,15 +61,31 @@ class provider implements
                 'userid' => 'privacy:metadata:local_aicharts_chart:userid',
                 'usermodified' => 'privacy:metadata:local_aicharts_chart:usermodified',
                 'prompt' => 'privacy:metadata:local_aicharts_chart:prompt',
-                'schemahint' => 'privacy:metadata:local_aicharts_chart:schemahint',
-                'charthint' => 'privacy:metadata:local_aicharts_chart:charthint',
-                'sqlhint' => 'privacy:metadata:local_aicharts_chart:sqlhint',
-                'sqltext' => 'privacy:metadata:local_aicharts_chart:sqltext',
                 'emailto' => 'privacy:metadata:local_aicharts_chart:emailto',
                 'timecreated' => 'privacy:metadata:local_aicharts_chart:timecreated',
                 'timemodified' => 'privacy:metadata:local_aicharts_chart:timemodified',
             ],
             'privacy:metadata:local_aicharts_chart'
+        );
+
+        $collection->add_database_table(
+            'local_aicharts_query',
+            [
+                'label' => 'privacy:metadata:local_aicharts_query:label',
+                'hint' => 'privacy:metadata:local_aicharts_query:hint',
+                'sqltext' => 'privacy:metadata:local_aicharts_query:sqltext',
+            ],
+            'privacy:metadata:local_aicharts_query'
+        );
+
+        $collection->add_database_table(
+            'local_aicharts_point',
+            [
+                'serieslabel' => 'privacy:metadata:local_aicharts_point:serieslabel',
+                'timepoint' => 'privacy:metadata:local_aicharts_point:timepoint',
+                'value' => 'privacy:metadata:local_aicharts_point:value',
+            ],
+            'privacy:metadata:local_aicharts_point'
         );
 
         $collection->add_database_table(
@@ -195,13 +212,14 @@ class provider implements
             ['userid' => $userid, 'usermodified' => $userid],
             'id ASC'
         );
-        foreach ($records as $record) {
-            $charts[] = self::export_chart_fields($record, $userid);
-        }
         foreach (self::get_charts_for_recipient($userid) as $record) {
             if (!isset($records[$record->id])) {
-                $charts[] = self::export_chart_fields($record, $userid);
+                $records[$record->id] = $record;
             }
+        }
+        chart_repository::attach_queries($records);
+        foreach ($records as $record) {
+            $charts[] = self::export_chart_fields($record, $userid);
         }
         if ($charts) {
             writer::with_context($context)->export_data(
@@ -376,15 +394,40 @@ class provider implements
         return (object) [
             'name' => $record->name,
             'prompt' => $record->prompt,
-            'schemahint' => $record->schemahint,
-            'charthint' => $record->charthint,
-            'sqlhint' => $record->sqlhint,
-            'sqltext' => $record->sqltext,
+            'queries' => array_map(
+                fn(\stdClass $query) => (object) [
+                    'label' => $query->label,
+                    'hint' => $query->hint,
+                    'sqltext' => $query->sqltext,
+                ],
+                $record->queries
+            ),
+            'points' => self::export_points($record->id),
             'creator' => transform::yesno($record->userid == $userid),
             'lastmodifiedby' => transform::yesno($record->usermodified == $userid),
             'recipient' => transform::yesno(in_array($userid, self::parse_recipients($record->emailto), true)),
             'timecreated' => transform::datetime($record->timecreated),
             'timemodified' => transform::datetime($record->timemodified),
         ];
+    }
+
+    /**
+     * The stored points of a trend chart, oldest first.
+     *
+     * @param int $chartid The chart id.
+     * @return \stdClass[] One entry per point.
+     */
+    protected static function export_points(int $chartid): array {
+        global $DB;
+
+        $points = [];
+        foreach ($DB->get_records('local_aicharts_point', ['chartid' => $chartid], 'timepoint, id') as $point) {
+            $points[] = (object) [
+                'series' => $point->serieslabel,
+                'time' => transform::datetime($point->timepoint),
+                'value' => $point->value,
+            ];
+        }
+        return $points;
     }
 }

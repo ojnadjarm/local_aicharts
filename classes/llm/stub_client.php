@@ -27,6 +27,9 @@ class stub_client implements client_interface {
     /** @var string Answer returned for a request that is out of scope. */
     protected const REFUSAL = '{"status":"refused"}';
 
+    /** @var string Start of a request that asks only how to draw known columns. */
+    protected const CHART_REQUEST = 'columns:';
+
     /** @var int How many answers have been produced in this request. */
     protected static int $callcount = 0;
 
@@ -43,6 +46,10 @@ class stub_client implements client_interface {
             if (str_contains($prompt, $keyword)) {
                 return llm_response::answer(self::REFUSAL);
             }
+        }
+
+        if (str_starts_with($prompt, self::CHART_REQUEST)) {
+            return llm_response::answer(json_encode($fixtures['responses']['default']['chart']));
         }
 
         foreach ($fixtures['responses'] as $keyword => $response) {

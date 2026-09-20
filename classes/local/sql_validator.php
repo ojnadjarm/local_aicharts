@@ -56,7 +56,7 @@ class sql_validator {
             throw new validation_exception('sqlnotselect');
         }
         self::check_forbidden($sql);
-        self::check_tables($sql);
+        self::check_braces($sql);
         self::check_from_targets($sql);
         self::check_params($sql, $params);
     }
@@ -92,18 +92,11 @@ class sql_validator {
     }
 
     /**
-     * Every placeholder must be an allowed table and no other brace may appear.
+     * No brace may appear outside a table placeholder.
      *
      * @param string $sql The query.
      */
-    protected static function check_tables(string $sql): void {
-        $allowed = self::allowed_tables();
-        preg_match_all('/' . self::PLACEHOLDER . '/', $sql, $matches);
-        foreach ($matches[1] as $table) {
-            if (!in_array($table, $allowed, true)) {
-                throw new validation_exception('sqltablenotallowed', $table);
-            }
-        }
+    protected static function check_braces(string $sql): void {
         $stripped = preg_replace('/' . self::PLACEHOLDER . '/', '', $sql);
         if (strpbrk($stripped, '{}') !== false) {
             throw new validation_exception('sqlforbidden', $stripped[strcspn($stripped, '{}')]);
@@ -231,15 +224,5 @@ class sql_validator {
             $ranges[] = [$start, $start + strlen($literal) - 1];
         }
         return $ranges;
-    }
-
-    /**
-     * Tables the generated SQL may query, from the plugin setting.
-     *
-     * @return string[]
-     */
-    protected static function allowed_tables(): array {
-        $lines = preg_split('/\R/', (string) get_config('local_aicharts', 'allowedtables'));
-        return array_values(array_filter(array_map('trim', $lines)));
     }
 }

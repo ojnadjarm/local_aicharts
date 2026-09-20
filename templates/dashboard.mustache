@@ -20,11 +20,10 @@
     The chart dashboard: heading, toolbar and either the card grid or the list.
 
     Context variables required for this template:
-    * tabs - The rendered Charts / Settings tabs.
     * listview - Whether the items are shown as a list instead of cards.
     * canmanage - Whether the user may add and change charts.
     * hascharts - Whether any chart is saved.
-    * showfilter - Whether the name filter is shown.
+    * addurl - URL of the wizard for a new chart.
     * gridurl - URL of the grid view.
     * listurl - URL of the list view.
     * cronurl - URL of the scheduled tasks page.
@@ -35,11 +34,10 @@
 
     Example context (json):
     {
-        "tabs": "",
         "listview": false,
         "canmanage": true,
         "hascharts": true,
-        "showfilter": false,
+        "addurl": "/local/aicharts/edit.php",
         "gridurl": "/local/aicharts/index.php?view=grid",
         "listurl": "/local/aicharts/index.php?view=list",
         "cronurl": "/admin/tool/task/scheduledtasks.php",
@@ -66,12 +64,11 @@
         <i class="icon fa fa-chart-column" aria-hidden="true"></i>{{#str}}dashboard, local_aicharts{{/str}}
     </h2>
     {{#canmanage}}
-        <button type="button" class="btn btn-primary" data-action="addchart">
+        <a href="{{addurl}}" class="btn btn-primary">
             <i class="icon fa fa-plus" aria-hidden="true"></i>{{#str}}addchart, local_aicharts{{/str}}
-        </button>
+        </a>
     {{/canmanage}}
 </div>
-{{{tabs}}}
 {{#hascharts}}
     <p class="text-muted small">{{#str}}dashboardintro, local_aicharts{{/str}}</p>
     {{#stalecron}}
@@ -81,16 +78,17 @@
         </div>
     {{/stalecron}}
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        {{#showfilter}}
-            <input type="search" class="form-control local-aicharts-filter" data-region="aic-filter"
+        <div class="input-group local-aicharts-filter">
+            <span class="input-group-text"><i class="icon fa fa-magnifying-glass m-0" aria-hidden="true"></i></span>
+            <input type="search" class="form-control" data-region="aic-filter"
                 aria-label="{{#str}}filtercharts, local_aicharts{{/str}}"
                 placeholder="{{#str}}filtercharts, local_aicharts{{/str}}">
-        {{/showfilter}}
-        <nav class="ms-auto" aria-label="{{#str}}view{{/str}}">
-            <a href="{{gridurl}}" class="p-2{{^listview}} active{{/listview}}"{{^listview}} aria-current="page"{{/listview}}>
+        </div>
+        <nav class="local-aicharts-viewtoggle ms-auto" aria-label="{{#str}}view{{/str}}">
+            <a href="{{gridurl}}" class="{{^listview}}active{{/listview}}"{{^listview}} aria-current="page"{{/listview}}>
                 <i class="icon fa fa-table-cells-large" aria-hidden="true"></i>{{#str}}viewgrid, local_aicharts{{/str}}
             </a>
-            <a href="{{listurl}}" class="p-2{{#listview}} active{{/listview}}"{{#listview}} aria-current="page"{{/listview}}>
+            <a href="{{listurl}}" class="{{#listview}}active{{/listview}}"{{#listview}} aria-current="page"{{/listview}}>
                 <i class="icon fa fa-list" aria-hidden="true"></i>{{#str}}viewlist, local_aicharts{{/str}}
             </a>
         </nav>
@@ -114,9 +112,9 @@
         <h3 class="h3 mt-3">{{#str}}nocharts, local_aicharts{{/str}}</h3>
         <p class="text-muted">{{#str}}nochartsintro, local_aicharts{{/str}}</p>
         {{#canmanage}}
-            <button type="button" class="btn btn-primary" data-action="addchart">
+            <a href="{{addurl}}" class="btn btn-primary">
                 <i class="icon fa fa-plus" aria-hidden="true"></i>{{#str}}addchart, local_aicharts{{/str}}
-            </button>
+            </a>
         {{/canmanage}}
         {{^canmanage}}
             <p class="mb-0">{{#str}}emptynopermission, local_aicharts{{/str}}</p>

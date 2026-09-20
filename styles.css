@@ -6,10 +6,12 @@
 
 .local-aicharts-filter {
     flex: 1 1 16rem;
+    max-width: 24rem;
 }
 
 .local-aicharts-statebox {
     padding: 0.75rem 1rem;
+    background: var(--bs-secondary-bg);
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
 }
@@ -23,6 +25,12 @@
     min-height: 8rem;
     max-height: var(--aic-chart-h);
     overflow: hidden;
+}
+
+.local-aicharts-chart .chart-area .chart-image {
+    width: 100%;
+    height: var(--aic-chart-h);
+    margin: 0;
 }
 
 .local-aicharts-chart .chart-area canvas,
@@ -62,7 +70,235 @@
     }
 }
 
+.local-aicharts-page-card .local-aicharts-chart {
+    --aic-chart-h: 18rem;
+}
+
+.local-aicharts-page-card .chart-area .chart-image {
+    max-width: 48rem;
+    margin-inline: auto;
+}
+
+@media (min-width: 992px) {
+    .local-aicharts-page-card .local-aicharts-chart {
+        --aic-chart-h: 24rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .local-aicharts-runs td,
+    .local-aicharts-runs th {
+        white-space: nowrap;
+    }
+
+    .local-aicharts-runs details p {
+        white-space: normal;
+        min-width: 16rem;
+    }
+}
+
+.local-aicharts-viewtoggle {
+    display: inline-flex;
+    gap: 0.25rem;
+}
+
+.local-aicharts-viewtoggle a {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    color: var(--bs-body-color);
+}
+
+.local-aicharts-viewtoggle a.active {
+    background: var(--bs-secondary-bg);
+    font-weight: 500;
+}
+
+.local-aicharts-viewtoggle a:focus-visible {
+    outline: 2px solid var(--bs-body-color);
+    outline-offset: 2px;
+}
+
+.local-aicharts-preview {
+    position: relative;
+    max-height: 12rem;
+    overflow: hidden;
+}
+
+.local-aicharts-preview::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2.5rem;
+    background: linear-gradient(to bottom, transparent, var(--bs-card-bg));
+}
+
 .local-aicharts-generating {
     padding: 0.5rem 1rem;
     border-bottom: 1px solid var(--bs-border-color);
+}
+
+.local-aicharts-wizard .fitem > [class*="col-md-"] {
+    flex: 0 0 100%;
+    max-width: 100%;
+}
+
+.local-aicharts-wizard .femptylabel > .col-form-label {
+    display: none;
+}
+
+.local-aicharts-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+}
+
+.local-aicharts-steps li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--bs-secondary-color);
+}
+
+.local-aicharts-steps li + li::before {
+    content: "";
+    display: block;
+    width: 1.5rem;
+    height: 1px;
+    background: var(--bs-border-color);
+}
+
+.local-aicharts-steps .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 50%;
+    font-size: 0.875rem;
+    font-weight: 500;
+    flex: none;
+}
+
+.local-aicharts-steps li[aria-current="step"] {
+    color: var(--bs-body-color);
+    font-weight: 500;
+}
+
+.local-aicharts-steps li[aria-current="step"] .num {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff;
+}
+
+.local-aicharts-steps li.done .num {
+    background: var(--bs-secondary-bg);
+    border-color: var(--bs-primary);
+    color: var(--bs-primary);
+}
+
+.local-aicharts-wizard-buttons {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.local-aicharts-kind .felement > fieldset > .d-flex {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    max-width: 56rem;
+}
+
+.local-aicharts-kind .felement label.form-check-inline {
+    display: block;
+    margin: 0;
+    padding: 1.25rem;
+    border: 2px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    cursor: pointer;
+    min-width: 0;
+}
+
+.local-aicharts-kind .felement label.form-check-inline:has(:checked) {
+    border-color: var(--bs-primary);
+    background: var(--bs-secondary-bg);
+}
+
+.local-aicharts-kind .felement label.form-check-inline .form-check-input {
+    float: none;
+    margin: 0 0.5rem 0 0;
+    vertical-align: -0.15rem;
+}
+
+.local-aicharts-kind-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 1.125rem;
+    font-weight: 500;
+}
+
+@media (min-width: 768px) {
+    .local-aicharts-kind .felement > fieldset > .d-flex {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.local-aicharts-wizard .felement > .form-control-static {
+    flex: 1 1 100%;
+    min-width: 0;
+}
+
+.local-aicharts-series-row {
+    min-width: 0;
+}
+
+.local-aicharts-series-row .btn-link {
+    padding: 0.125rem 0.375rem;
+}
+
+.local-aicharts-series-sql {
+    font-family: var(--bs-font-monospace);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.local-aicharts-catalogue > summary {
+    cursor: pointer;
+}
+
+.local-aicharts-2col {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+@media (min-width: 992px) {
+    .local-aicharts-2col {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+}
+
+.local-aicharts-chart-preview .local-aicharts-chart {
+    --aic-chart-h: 20rem;
+}
+
+.local-aicharts-step .form-check-inline .icon {
+    margin-right: 0.25rem;
+}
+
+.local-aicharts-step [data-groupname="series"] .form-check-inline {
+    flex: 0 0 auto;
+    min-width: 10rem;
 }

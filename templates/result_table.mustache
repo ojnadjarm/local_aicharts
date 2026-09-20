@@ -17,7 +17,8 @@
 {{!
     @template local_aicharts/result_table
 
-    Query result rows as a table, with the first rows inline and the rest behind a details element.
+    Query result rows as a table, with the first rows inline and the rest behind a details element,
+    or as a fixed-height preview linking to the page of the chart.
 
     Context variables required for this template:
     * head - Column headings, each with a name and a colcap flag.
@@ -26,6 +27,8 @@
     * total - Total number of rows.
     * hasrows - Whether the result has any row.
     * hasrest - Whether there are rows beyond the inline ones.
+    * preview - Whether only the inline rows are shown, in a fixed-height box with a link.
+    * viewurl - Page the preview links to.
 
     Example context (json):
     {
@@ -41,28 +44,42 @@
         ],
         "total": 2,
         "hasrows": true,
-        "hasrest": true
+        "hasrest": true,
+        "preview": false,
+        "viewurl": ""
     }
 }}
 {{#hasrows}}
-    <table class="table table-sm">
-        <thead>
-            <tr>
-                {{#head}}
-                    <th scope="col"{{#colcap}} class="d-none d-sm-table-cell"{{/colcap}}>{{name}}</th>
-                {{/head}}
-            </tr>
-        </thead>
-        <tbody>
-            {{#inline}}
+    {{#preview}}<div class="local-aicharts-preview">{{/preview}}
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <thead>
                 <tr>
-                    {{#cells}}
-                        <td{{#colcap}} class="d-none d-sm-table-cell"{{/colcap}}>{{value}}</td>
-                    {{/cells}}
+                    {{#head}}
+                        <th scope="col"{{#colcap}} class="d-none d-sm-table-cell"{{/colcap}}>{{name}}</th>
+                    {{/head}}
                 </tr>
-            {{/inline}}
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                {{#inline}}
+                    <tr>
+                        {{#cells}}
+                            <td{{#colcap}} class="d-none d-sm-table-cell"{{/colcap}}>{{value}}</td>
+                        {{/cells}}
+                    </tr>
+                {{/inline}}
+            </tbody>
+        </table>
+    </div>
+    {{#preview}}
+        </div>
+        <p class="mb-0 mt-2">
+            <a href="{{viewurl}}">
+                <i class="icon fa fa-up-right-from-square m-0" aria-hidden="true"></i> {{#str}}openrows, local_aicharts, {{total}}{{/str}}
+            </a>
+        </p>
+    {{/preview}}
+    {{^preview}}
     {{#hasrest}}
         <details>
             <summary>{{#str}}showallrows, local_aicharts, {{total}}{{/str}}</summary>
@@ -95,6 +112,7 @@
             </div>
         </details>
     {{/hasrest}}
+    {{/preview}}
 {{/hasrows}}
 {{^hasrows}}
     <p class="text-muted">{{#str}}norows, local_aicharts{{/str}}</p>

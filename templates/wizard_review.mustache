@@ -1,0 +1,91 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/wizard_review
+
+    The Review step: what the wizard holds and the chart of a fresh run of it.
+
+    Context variables required for this template:
+    * summary - One entry per line with term and description.
+    * name - The chart name, empty until it is given.
+    * count - The "N rows returned · M ms" line of the review run.
+    * body - The rendered chart or result table.
+    * norows - Whether the review run returned no rows.
+    * firstpoint - Whether the review run holds the first point of a trend chart.
+    * errormessage - Why the review run has no result.
+    * errordetail - What the database reported, when there is more than the message.
+    * icon - Font Awesome class of the chart type.
+    * iconlabel - Text read instead of the type icon.
+    * fixurl - URL of the Data step.
+
+    Example context (json):
+    {
+        "summary": [{"term": "Kind", "description": "One-shot - Every run replaces the data."}],
+        "name": "Enrolments per course",
+        "count": "12 rows returned · 79 ms",
+        "body": "<div class=\"chart-area\"></div>",
+        "icon": "fa-chart-column",
+        "iconlabel": "Bar chart",
+        "norows": false,
+        "firstpoint": false,
+        "fixurl": "/local/aicharts/edit.php?w=abc&step=2"
+    }
+}}
+<dl class="local-aicharts-summary row mb-3">
+    {{#summary}}
+        <dt class="col-sm-3">{{term}}</dt>
+        <dd class="col-sm-9">{{description}}</dd>
+    {{/summary}}
+</dl>
+{{#errormessage}}
+    <div class="local-aicharts-statebox d-flex gap-2 mb-3" role="status">
+        <i class="icon fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
+        <div>
+            {{.}}
+            <a href="{{fixurl}}">{{#str}}fixdata, local_aicharts{{/str}}</a>
+            {{#errordetail}}
+                <details class="small mt-1">
+                    <summary>{{#str}}errordetails, local_aicharts{{/str}}</summary>
+                    <code>{{.}}</code>
+                </details>
+            {{/errordetail}}
+        </div>
+    </div>
+{{/errormessage}}
+{{#body}}
+    <div class="card mb-3 local-aicharts-page-card">
+        <div class="card-header d-flex align-items-center flex-wrap gap-2">
+            <i class="icon fa {{icon}} m-0" aria-hidden="true"></i>
+            <span class="visually-hidden">{{iconlabel}}</span>
+            <h3 class="h6 mb-0 flex-grow-1">{{#name}}{{.}}{{/name}}{{^name}}{{#str}}preview, local_aicharts{{/str}}{{/name}}</h3>
+            {{#count}}<span class="text-muted small">{{.}}</span>{{/count}}
+        </div>
+        <div class="card-body">
+            <div class="local-aicharts-chart">{{{.}}}</div>
+            {{#firstpoint}}
+                <p class="text-muted small mt-2 mb-0">{{#str}}firstpointnote, local_aicharts{{/str}}</p>
+            {{/firstpoint}}
+        </div>
+    </div>
+    <p class="text-muted small">{{#str}}livenotice, local_aicharts{{/str}}</p>
+{{/body}}
+{{#norows}}
+    <div class="local-aicharts-statebox d-flex gap-2 mb-3" role="status">
+        <i class="icon fa fa-circle-info mt-1" aria-hidden="true"></i>
+        <div>{{#str}}norows, local_aicharts{{/str}}</div>
+    </div>
+{{/norows}}

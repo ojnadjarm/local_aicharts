@@ -30,6 +30,12 @@ class chart_repository {
     /** @var string Table holding the saved charts. */
     protected const TABLE = 'local_aicharts_chart';
 
+    /** @var string Table holding the queries of each chart. */
+    protected const QUERY_TABLE = 'local_aicharts_query';
+
+    /** @var string Table holding the points of each trend chart. */
+    protected const POINT_TABLE = 'local_aicharts_point';
+
     /** @var int Shortest word taken into account when ranking examples. */
     protected const EXAMPLE_WORD_LENGTH = 4;
 
@@ -45,6 +51,8 @@ class chart_repository {
     /**
      * Inserts a chart, or updates it when the record carries an id.
      *
+     * The queries property, when set, replaces the query rows of the chart.
+     *
      * @param stdClass $chart Chart record.
      * @return int The chart id.
      */
@@ -55,16 +63,53 @@ class chart_repository {
         $record->timemodified = time();
         $record->usermodified = $USER->id;
 
+        $queries = self::normalise_queries($record);
+        unset($record->queries);
+
         if (empty($record->id)) {
             unset($record->id);
             $record->timecreated = $record->timemodified;
             $record->emailto ??= '';
             $record->userid ??= $USER->id;
-            return (int) $DB->insert_record(self::TABLE, $record);
+            $id = (int) $DB->insert_record(self::TABLE, $record);
+        } else {
+            $DB->update_record(self::TABLE, $record);
+            $id = (int) $record->id;
         }
 
-        $DB->update_record(self::TABLE, $record);
-        return (int) $record->id;
+        if ($queries !== null) {
+            $DB->delete_records(self::QUERY_TABLE, ['chartid' => $id]);
+            foreach ($queries as $sortorder => $query) {
+                $query->chartid = $id;
+                $query->sortorder = $sortorder;
+                $DB->insert_record(self::QUERY_TABLE, $query);
+            }
+        }
+
+        return $id;
+    }
+
+    /**
+     * Builds the query rows a chart record describes.
+     *
+     * @param stdClass $chart Chart record.
+     * @return stdClass[]|null Rows with label, hint, sqltext and params, or null when the record carries none.
+     */
+    protected static function normalise_queries(stdClass $chart): ?array {
+        if (!isset($chart->queries)) {
+            return null;
+        }
+        $queries = [];
+        foreach (array_values($chart->queries) as $query) {
+            $query = (object) $query;
+            $queries[] = (object) [
+                'label' => $query->label,
+                'hint' => $query->hint ?? null,
+                'sqltext' => $query->sqltext,
+                'params' => empty($query->params) ? '{}' : $query->params,
+            ];
+        }
+        return $queries;
     }
 
     /**
@@ -76,7 +121,31 @@ class chart_repository {
     public static function get(int $id): ?stdClass {
         global $DB;
 
-        return $DB->get_record(self::TABLE, ['id' => $id]) ?: null;
+        $chart = $DB->get_record(self::TABLE, ['id' => $id]) ?: null;
+        if ($chart) {
+            self::attach_queries([$chart->id => $chart]);
+        }
+        return $chart;
+    }
+
+    /**
+     * Sets the queries property of each chart, in sort order.
+     *
+     * @param stdClass[] $charts Charts keyed by id.
+     */
+    public static function attach_queries(array $charts): void {
+        global $DB;
+
+        foreach ($charts as $chart) {
+            $chart->queries = [];
+        }
+        if (!$charts) {
+            return;
+        }
+        $rows = $DB->get_records_list(self::QUERY_TABLE, 'chartid', array_keys($charts), 'chartid, sortorder, id');
+        foreach ($rows as $row) {
+            $charts[$row->chartid]->queries[] = $row;
+        }
     }
 
     /**
@@ -90,7 +159,9 @@ class chart_repository {
         $sql = "SELECT *
                   FROM {" . self::TABLE . "}
               ORDER BY CASE WHEN runmode = :live THEN 1 ELSE 0 END, name, id";
-        return $DB->get_records_sql($sql, ['live' => 'live']);
+        $charts = $DB->get_records_sql($sql, ['live' => 'live']);
+        self::attach_queries($charts);
+        return $charts;
     }
 
     /**
@@ -112,6 +183,7 @@ class chart_repository {
                 $due[$chart->id] = $chart;
             }
         }
+        self::attach_queries($due);
 
         return $due;
     }
@@ -141,7 +213,7 @@ class chart_repository {
     }
 
     /**
-     * Deletes a chart with its stored results and their files.
+     * Deletes a chart with its points, its stored results and their files.
      *
      * @param int $id Chart id.
      */
@@ -149,6 +221,8 @@ class chart_repository {
         global $DB;
 
         result_store::delete_for_chart($id);
+        $DB->delete_records(self::POINT_TABLE, ['chartid' => $id]);
+        $DB->delete_records(self::QUERY_TABLE, ['chartid' => $id]);
         $DB->delete_records(self::TABLE, ['id' => $id]);
     }
 
@@ -173,8 +247,10 @@ class chart_repository {
         $words = self::words($prompt);
         $candidates = [];
         $scores = [];
-        foreach ($DB->get_records(self::TABLE, ['enabled' => 1], 'timemodified DESC, id DESC') as $chart) {
-            if (core_text::strlen($chart->sqltext) > self::EXAMPLE_MAX_SQL) {
+        $charts = $DB->get_records(self::TABLE, ['enabled' => 1], 'timemodified DESC, id DESC');
+        self::attach_queries($charts);
+        foreach ($charts as $chart) {
+            if (!$chart->queries || core_text::strlen($chart->queries[0]->sqltext) > self::EXAMPLE_MAX_SQL) {
                 continue;
             }
             $candidates[$chart->id] = $chart;

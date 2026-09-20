@@ -20,8 +20,8 @@
     The saved charts as one table; nothing is queried.
 
     Context variables required for this template:
-    * rows - One entry per chart with id, name, dataname, icon, iconlabel, menu, scheduled, historyurl,
-      mode, lastrun, numrows and state.
+    * rows - One entry per chart with id, name, dataname, icon, iconlabel, menu, viewurl, scheduled,
+      trend, trendlabel, mode, lastrun, numrows and state.
 
     Example context (json):
     {
@@ -33,8 +33,9 @@
                 "icon": "fa-chart-column",
                 "iconlabel": "Bar chart",
                 "menu": "",
+                "viewurl": "/local/aicharts/view.php?id=1",
                 "scheduled": false,
-                "historyurl": "",
+                "trend": false,
                 "mode": "Live",
                 "lastrun": "-",
                 "numrows": "-",
@@ -59,14 +60,15 @@
         <tbody>
             {{#rows}}
                 <tr data-region="aic-row" data-id="{{id}}" data-name="{{dataname}}">
-                    <td>
+                    <td class="text-nowrap">
                         <i class="icon fa {{icon}} m-0" aria-hidden="true"></i>
                         <span class="visually-hidden">{{iconlabel}}</span>
+                        {{#trend}}
+                            <i class="icon fa fa-arrow-trend-up m-0 text-muted" aria-hidden="true"></i>
+                            <span class="visually-hidden">{{trendlabel}}</span>
+                        {{/trend}}
                     </td>
-                    <td>
-                        {{#scheduled}}<a href="{{historyurl}}">{{name}}</a>{{/scheduled}}
-                        {{^scheduled}}{{name}}{{/scheduled}}
-                    </td>
+                    <td><a href="{{viewurl}}">{{name}}</a></td>
                     <td class="text-nowrap">{{mode}}</td>
                     <td class="text-nowrap">{{lastrun}}</td>
                     <td class="text-end">{{numrows}}</td>

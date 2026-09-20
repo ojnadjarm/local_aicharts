@@ -15,21 +15,27 @@
     along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 }}
 {{!
-    @template local_aicharts/history
+    @template local_aicharts/chart_page
 
-    The stored runs of one chart: the selected run and the table of every kept run.
+    One chart: its current or selected result, the CSV of it and the table of every kept run.
 
     Context variables required for this template:
-    * tabs - The rendered Charts / Settings tabs.
     * id - The chart id.
     * name - The chart name.
     * icon - Font Awesome class of the chart type.
     * iconlabel - Text read instead of the type icon.
-    * canmanage - Whether the user may run the chart now.
+    * live - Whether the chart runs when the page loads.
     * scheduled - Whether the chart runs on a schedule.
+    * trend - Whether every run adds one point per series.
+    * trendlabel - What the trend icon says.
+    * pointsline - How many points the chart holds and how many it keeps.
     * schedulelabel - The run mode with the run hour.
+    * livesummary - Line explaining when a live chart runs.
     * paused - Whether the chart is paused.
     * queued - Whether a run of the chart waits for cron.
+    * canmanage - Whether the user may run the chart now.
+    * runagain - Whether the run control is offered.
+    * runlabel - Label of that button: Run again, or Run now when nothing was ever stored.
     * emailinfo - Who receives the result and when.
     * runskept - How many runs are kept.
     * backurl - Link back to the dashboard.
@@ -47,24 +53,28 @@
     * hasresult - Whether the shown run has a rendered result.
     * body - The rendered chart or result table.
     * runmeta - Rows, milliseconds and trigger of the shown run.
+    * csvurl - Download of the shown result as CSV.
     * showemailed - Whether the emailed column is rendered.
     * rows - The rows of the runs table.
 
     Example context (json):
     {
-        "tabs": "",
         "id": 1,
         "name": "Users per role",
         "icon": "fa-chart-pie",
         "iconlabel": "Pie chart",
-        "canmanage": true,
+        "live": false,
         "scheduled": true,
+        "trend": false,
         "schedulelabel": "Scheduled weekly at 06:00",
         "paused": false,
         "queued": false,
+        "canmanage": true,
+        "runagain": true,
+        "runlabel": "Run again",
         "runskept": "30 runs kept",
         "backurl": "/local/aicharts/index.php",
-        "refreshurl": "/local/aicharts/history.php?id=1",
+        "refreshurl": "/local/aicharts/view.php?id=1",
         "cronurl": "/admin/tool/task/scheduledtasks.php",
         "stalecron": false,
         "hasresults": true,
@@ -74,6 +84,7 @@
         "hasresult": true,
         "body": "",
         "runmeta": "4 rows - 62 ms - Scheduled",
+        "csvurl": "/pluginfile.php",
         "showemailed": false,
         "rows": [
             {
@@ -84,41 +95,41 @@
                 "numrows": "4",
                 "durationms": "58",
                 "downloadurl": "/pluginfile.php",
-                "viewurl": "/local/aicharts/history.php?id=1&resultid=2",
+                "viewurl": "/local/aicharts/view.php?id=1&resultid=2",
                 "current": false,
+                "latest": false,
                 "showemailed": false,
                 "emailed": false
             }
         ]
     }
 }}
-<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-    <h2 class="h2 mb-0 d-flex align-items-center gap-2">
-        <i class="icon fa fa-clock-rotate-left m-0" aria-hidden="true"></i>
-        <span>{{name}}</span>
-        <i class="icon fa {{icon}} m-0 text-muted" aria-hidden="true"></i>
-        <span class="visually-hidden">{{iconlabel}}</span>
-    </h2>
-    {{#canmanage}}
-        {{#scheduled}}
-            <button type="button" class="btn btn-primary" data-action="runnow" data-id="{{id}}" {{#queued}}disabled{{/queued}}>
-                <i class="icon fa fa-play" aria-hidden="true"></i>{{#str}}runnow, local_aicharts{{/str}}
-            </button>
-        {{/scheduled}}
-    {{/canmanage}}
-</div>
-{{{tabs}}}
+<h2 class="h2 mb-3 d-flex align-items-center gap-2">
+    <i class="icon fa {{icon}} m-0" aria-hidden="true"></i>
+    <span class="visually-hidden">{{iconlabel}}</span>
+    <span>{{name}}</span>
+</h2>
 <p class="text-muted small mb-1">
-    {{#scheduled}}
-        {{schedulelabel}}{{#paused}} · {{#str}}paused, local_aicharts{{/str}}{{/paused}} ·
-    {{/scheduled}}
-    {{runskept}} · <a href="{{backurl}}">{{#str}}backtocharts, local_aicharts{{/str}}</a>
+    {{#trend}}
+        <i class="icon fa fa-arrow-trend-up m-0" aria-hidden="true"></i>{{trendlabel}} · {{pointsline}} ·
+    {{/trend}}
+    {{#scheduled}}{{schedulelabel}}{{/scheduled}}{{#live}}{{livesummary}}{{/live}}
+    {{#paused}} · {{#str}}paused, local_aicharts{{/str}}{{/paused}}
+    {{#hasresults}} · {{runskept}}{{/hasresults}}
+    · <a href="{{backurl}}">{{#str}}backtocharts, local_aicharts{{/str}}</a>
 </p>
 {{#emailinfo}}
     <p class="text-muted small mb-1">
         <i class="icon fa fa-envelope m-0" aria-hidden="true"></i>{{emailinfo}}
     </p>
 {{/emailinfo}}
+{{#runagain}}
+    {{#canmanage}}
+        <button type="button" class="btn btn-secondary mt-2" data-action="runnow" data-id="{{id}}" {{#queued}}disabled{{/queued}}>
+            <i class="icon fa fa-play" aria-hidden="true"></i>{{runlabel}}
+        </button>
+    {{/canmanage}}
+{{/runagain}}
 {{#queued}}
     <div class="local-aicharts-statebox d-flex gap-2 my-3" role="status">
         <i class="icon fa fa-clock mt-1" aria-hidden="true"></i>
@@ -134,8 +145,16 @@
         <div>{{stalecronmessage}} <a href="{{cronurl}}">{{#str}}checkcron, local_aicharts{{/str}}</a></div>
     </div>
 {{/stalecron}}
+{{#paused}}
+    {{#live}}
+        <div class="local-aicharts-statebox d-flex gap-2 my-3" role="status">
+            <i class="icon fa fa-pause mt-1" aria-hidden="true"></i>
+            <div>{{#str}}pausedstate, local_aicharts{{/str}}</div>
+        </div>
+    {{/live}}
+{{/paused}}
 {{#hasselected}}
-    <div class="card my-3">
+    <div class="card my-3 local-aicharts-page-card">
         <div class="card-header d-flex align-items-center flex-wrap gap-2">
             <h3 class="h6 mb-0">{{runof}}</h3>
             {{#olderrun}}<span class="text-muted small">{{.}}</span>{{/olderrun}}
@@ -159,13 +178,21 @@
             {{#body}}<div class="local-aicharts-chart">{{{body}}}</div>{{/body}}
         </div>
         {{#runmeta}}
-            <div class="card-footer text-muted small">{{.}}</div>
+            <div class="card-footer d-flex flex-wrap align-items-center justify-content-between gap-2 text-muted small">
+                <span>{{.}}</span>
+                {{#csvurl}}
+                    <a class="btn btn-secondary btn-sm" href="{{.}}">
+                        <i class="icon fa fa-download" aria-hidden="true"></i>{{#str}}downloadcsv, local_aicharts{{/str}}
+                        <span class="visually-hidden">{{#str}}csvofcurrentrun, local_aicharts{{/str}}</span>
+                    </a>
+                {{/csvurl}}
+            </div>
         {{/runmeta}}
     </div>
 {{/hasselected}}
-<h3 class="h4">{{#str}}runs, local_aicharts{{/str}}</h3>
 {{#hasresults}}
-    <div class="table-responsive">
+    <h3 class="h4">{{#str}}runs, local_aicharts{{/str}}</h3>
+    <div class="table-responsive local-aicharts-runs">
         <table class="table">
             <thead>
                 <tr>
@@ -182,7 +209,7 @@
             <tbody>
                 {{#rows}}
                     <tr>
-                        <td class="text-nowrap{{#current}} fw-medium{{/current}}">{{date}}</td>
+                        <td class="text-nowrap{{#current}} fw-medium{{/current}}{{#latest}} fw-medium{{/latest}}">{{date}}</td>
                         <td>{{trigger}}</td>
                         <td>
                             {{status}}
@@ -215,10 +242,11 @@
                         </td>
                         <td class="text-nowrap">
                             {{#current}}{{#str}}thisrun, local_aicharts{{/str}}{{/current}}
-                            {{^current}}
+                            {{#latest}}{{#str}}latestrun, local_aicharts{{/str}}{{/latest}}
+                            {{^current}}{{^latest}}
                                 {{#viewurl}}<a href="{{.}}">{{#str}}viewrun, local_aicharts{{/str}}</a>{{/viewurl}}
                                 {{^viewurl}}—{{/viewurl}}
-                            {{/current}}
+                            {{/latest}}{{/current}}
                         </td>
                     </tr>
                 {{/rows}}
@@ -227,10 +255,12 @@
     </div>
 {{/hasresults}}
 {{^hasresults}}
-    <div class="local-aicharts-statebox d-flex gap-2" role="status">
-        <i class="icon fa fa-clock mt-1" aria-hidden="true"></i>
-        <div>{{#str}}noresults, local_aicharts{{/str}}</div>
-    </div>
+    {{#scheduled}}
+        <div class="local-aicharts-statebox d-flex gap-2" role="status">
+            <i class="icon fa fa-clock mt-1" aria-hidden="true"></i>
+            <div>{{#str}}noresults, local_aicharts{{/str}}</div>
+        </div>
+    {{/scheduled}}
 {{/hasresults}}
 {{#js}}
     require(['local_aicharts/dashboard'], function(Dashboard) {

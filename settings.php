@@ -83,33 +83,10 @@ if ($hassiteconfig) {
         get_string('headingsafety', 'local_aicharts'),
         ''
     ));
-    $settings->add(new admin_setting_configtextarea(
-        'local_aicharts/allowedtables',
-        get_string('allowedtables', 'local_aicharts'),
-        get_string('allowedtables_desc', 'local_aicharts'),
-        implode("\n", [
-            'user',
-            'course',
-            'course_categories',
-            'enrol',
-            'user_enrolments',
-            'role',
-            'role_assignments',
-            'context',
-            'course_modules',
-            'modules',
-            'course_completions',
-            'course_modules_completion',
-            'user_lastaccess',
-            'logstore_standard_log',
-            'grade_items',
-            'grade_grades',
-            'cohort',
-            'cohort_members',
-        ]),
-        PARAM_RAW,
-        60,
-        20
+    $settings->add(new admin_setting_description(
+        'local_aicharts/querydisclaimer',
+        '',
+        get_string('querydisclaimer', 'local_aicharts')
     ));
     $settings->add(new admin_setting_configtext(
         'local_aicharts/maxrowsdefault',
@@ -130,6 +107,13 @@ if ($hassiteconfig) {
         get_string('querytimeout', 'local_aicharts'),
         get_string('querytimeout_desc', 'local_aicharts'),
         20,
+        PARAM_INT
+    ));
+    $settings->add(new admin_setting_configtext(
+        'local_aicharts/liveonload',
+        get_string('liveonload', 'local_aicharts'),
+        get_string('liveonload_desc', 'local_aicharts'),
+        \local_aicharts\output\dashboard::LIVE_ON_LOAD,
         PARAM_INT
     ));
 
@@ -191,6 +175,13 @@ if ($hassiteconfig) {
         30,
         PARAM_INT
     ));
+    $settings->add(new admin_setting_configtext(
+        'local_aicharts/pointsretention',
+        get_string('pointsretention', 'local_aicharts'),
+        get_string('pointsretention_desc', 'local_aicharts'),
+        365,
+        PARAM_INT
+    ));
 }
 
 $ADMIN->add('reports', new admin_externalpage(
@@ -201,9 +192,17 @@ $ADMIN->add('reports', new admin_externalpage(
 ));
 
 $ADMIN->add('reports', new admin_externalpage(
-    'local_aicharts_history',
-    get_string('runhistory', 'local_aicharts'),
-    new moodle_url('/local/aicharts/history.php'),
+    'local_aicharts_view',
+    get_string('view', 'local_aicharts'),
+    new moodle_url('/local/aicharts/view.php'),
     ['local/aicharts:view', 'local/aicharts:receiveresults'],
+    true
+));
+
+$ADMIN->add('reports', new admin_externalpage(
+    'local_aicharts_edit',
+    get_string('addchart', 'local_aicharts'),
+    new moodle_url('/local/aicharts/edit.php'),
+    'local/aicharts:manage',
     true
 ));

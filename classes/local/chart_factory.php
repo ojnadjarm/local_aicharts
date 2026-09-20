@@ -49,7 +49,7 @@ class chart_factory {
         if (!$rows) {
             throw new moodle_exception('norows', 'local_aicharts');
         }
-        self::require_columns($spec, $rows);
+        self::require_columns($spec, array_keys($rows[0]));
 
         $chart = match ($spec->type) {
             'bar' => new chart_bar(),
@@ -98,14 +98,13 @@ class chart_factory {
     }
 
     /**
-     * Check that the rows carry the label and series columns.
+     * Check that the result columns carry the label and series columns.
      *
      * @param chart_spec $spec Parsed chart definition.
-     * @param array $rows Result rows as arrays.
+     * @param string[] $columns Column names of the result.
      * @throws moodle_exception
      */
-    protected static function require_columns(chart_spec $spec, array $rows): void {
-        $columns = array_keys(reset($rows));
+    public static function require_columns(chart_spec $spec, array $columns): void {
         $needed = array_merge([$spec->labelcolumn], array_column($spec->series, 'column'));
         foreach ($needed as $column) {
             if (!in_array($column, $columns, true)) {

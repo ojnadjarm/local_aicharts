@@ -17,9 +17,11 @@
 namespace local_aicharts\task;
 
 use local_aicharts\local\chart_repository;
+use local_aicharts\local\point_store;
 use local_aicharts\local\query_runner;
 use local_aicharts\local\result_mailer;
 use local_aicharts\local\result_store;
+use local_aicharts\local\schedule;
 use stdClass;
 
 /**
@@ -89,7 +91,9 @@ class run_chart extends \core\task\adhoc_task {
     }
 
     /**
-     * Runs the query of a chart, stores the outcome and updates the chart.
+     * Runs the queries of a chart, stores the outcome and updates the chart.
+     *
+     * A trend chart adds one point per series first and stores every point kept so far.
      *
      * @param stdClass $chart Chart record.
      * @param string $trigger scheduled, manual or save.
@@ -99,18 +103,33 @@ class run_chart extends \core\task\adhoc_task {
     public static function run(stdClass $chart, string $trigger, int $userid = 0): stdClass {
         global $DB;
 
-        $params = json_decode((string) $chart->params, true);
-        $outcome = query_runner::run($chart->sqltext, is_array($params) ? $params : [], (int) $chart->maxrows);
+        $trend = schedule::is_trend($chart);
+        $now = time();
+        if ($trend) {
+            $outcome = query_runner::run_points($chart->queries ?? [], (int) $chart->maxrows);
+            $rows = [];
+            if (!$outcome->has_error()) {
+                point_store::append($chart, $outcome->rows[0], $now, null);
+                point_store::prune($chart->id, point_store::retention($chart));
+                $rows = point_store::format_rows(point_store::rows($chart->id));
+            }
+        } else {
+            $outcome = query_runner::run_all($chart->queries ?? [], (int) $chart->maxrows);
+            $rows = $outcome->rows;
+        }
 
         $result = result_store::store(
             $chart,
-            $outcome->rows,
+            $rows,
             $trigger,
             $userid,
             $outcome->has_error() ? $outcome->errormessage : null,
             $outcome->durationms,
             $outcome->truncated
         );
+        if ($trend && !$outcome->has_error()) {
+            point_store::link_result($chart->id, $now, $result->id);
+        }
 
         if ($trigger === 'scheduled') {
             result_mailer::send_for_result($chart, $result);

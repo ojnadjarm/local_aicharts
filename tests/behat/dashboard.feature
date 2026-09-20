@@ -1,8 +1,8 @@
 @local @local_aicharts @javascript
-Feature: Chart dashboard with the offline sample answers
-  In order to build charts from plain-language requests
+Feature: Chart dashboard
+  In order to follow the charts of my site
   As an admin
-  I need to generate, save, edit and review charts on the dashboard
+  I need to list, filter, run and pause the saved charts
 
   Background:
     Given the following config values are set as admin:
@@ -24,31 +24,11 @@ Feature: Chart dashboard with the offline sample answers
   Scenario: The dashboard lists the shipped charts
     Then I should see "Enrolments per course"
     And I should see "Users who have never logged in"
-    And "Add chart" "button" should exist
-
-  Scenario: Generate a chart with the sample answers and save it
-    When I click on "Add chart" "button"
-    And I set the field "Describe your chart" in the "Add chart" "dialogue" to "users per course"
-    And I click on "Generate" "button" in the "Add chart" "dialogue"
-    Then I should see "Preview" in the "Add chart" "dialogue"
-    And the field "Chart name" in the "Add chart" "dialogue" matches value "Users per course"
-    And I should see "SQL that will run on every load" in the "Add chart" "dialogue"
-    And I should see "Model notes: Counts enrolled users, whatever the enrolment status." in the "Add chart" "dialogue"
-    When I click on "Save changes" "button" in the "Add chart" "dialogue"
-    Then I should see "Chart saved."
-    And I should see "Users per course"
-    And "Add chart" "dialogue" should not exist
+    And "Add chart" "link" should exist
 
   Scenario: The filter narrows the cards by name
-    Given I click on "Add chart" "button"
-    And I set the field "Describe your chart" in the "Add chart" "dialogue" to "users per course"
-    And I click on "Generate" "button" in the "Add chart" "dialogue"
-    And I should see "Preview" in the "Add chart" "dialogue"
-    And I click on "Save changes" "button" in the "Add chart" "dialogue"
-    And I should see "Chart saved."
     When I set the field "Filter charts" to "users per"
-    Then I should see "Showing 3 of 7 items."
-    And I should see "Users per course"
+    Then I should see "Showing 2 of 7 items."
     And I should see "Users per role"
     And I should see "New users per week"
     And I should not see "Courses per category"
@@ -56,58 +36,33 @@ Feature: Chart dashboard with the offline sample answers
     Then I should see "No items match."
     And I should not see "Users per role"
 
-  Scenario: Closing the modal after a preview asks before discarding it
-    When I click on "Add chart" "button"
-    And I set the field "Describe your chart" in the "Add chart" "dialogue" to "users per course"
-    And I click on "Generate" "button" in the "Add chart" "dialogue"
-    And I should see "Preview" in the "Add chart" "dialogue"
-    And I press the escape key
-    Then I should see "Discard the generated preview?"
-    When I click on "Cancel" "button" in the "Discard preview" "dialogue"
-    Then "Add chart" "dialogue" should exist
-    And I should see "Preview" in the "Add chart" "dialogue"
-    When I press the escape key
-    And I click on "Discard" "button" in the "Discard preview" "dialogue"
-    Then "Add chart" "dialogue" should not exist
-
-  Scenario: Edit a saved chart from the list view
-    Given I click on "List" "link"
-    When I open the action menu in "Enrolments per course" "table_row"
-    And I choose "Edit" in the open action menu
-    Then I should see "Preview" in the "Edit chart" "dialogue"
-    And the field "Chart name" in the "Edit chart" "dialogue" matches value "Enrolments per course"
-    When I set the field "Chart name" in the "Edit chart" "dialogue" to "Enrolments per course, renamed"
-    And I click on "Save changes" "button" in the "Edit chart" "dialogue"
-    Then I should see "Chart saved."
-    And I should see "Enrolments per course, renamed"
-
-  Scenario: A scheduled chart runs once on save and shows its run history
-    When I click on "Add chart" "button"
-    And I set the field "Describe your chart" in the "Add chart" "dialogue" to "users per course"
-    And I click on "Generate" "button" in the "Add chart" "dialogue"
-    And I should see "Preview" in the "Add chart" "dialogue"
-    And I click on "Daily" "radio" in the "Add chart" "dialogue"
-    Then "Run time" "select" should be visible
-    When I click on "Save changes" "button" in the "Add chart" "dialogue"
-    Then I should see "Chart saved."
-    And I should see "Users per course"
-    When I follow "Run history"
-    Then I should see "Users per course"
-    And I should see "Scheduled daily at"
-    And I should see "30 runs kept"
-    And I should see "First run after save"
-    And I should see "OK"
+  Scenario: A live chart opens its page from its name with the current result and a CSV
+    When I follow "Enrolments per course"
+    Then I should see "Enrolments per course"
+    And I should see "Live — runs when the dashboard or this page loads"
+    And I should see "ran just now"
+    And "Download CSV" "link" should exist
+    And I should not see "Runs"
     And I should see "Back to charts"
 
-  Scenario: A request for a list produces a query-only table
-    When I click on "Add chart" "button"
-    And I set the field "Describe your chart" in the "Add chart" "dialogue" to "list the users who never logged in"
-    And I click on "Generate" "button" in the "Add chart" "dialogue"
-    Then the field "Chart name" in the "Add chart" "dialogue" matches value "Users who never logged in"
-    And I should see "Model notes: Suspended users are included." in the "Add chart" "dialogue"
-    And "table" "css_element" should exist in the "Add chart" "dialogue"
-    And I should see "lastname" in the "Add chart" "dialogue"
-    And I should see "student1@example.com" in the "Add chart" "dialogue"
-    When I click on "Save changes" "button" in the "Add chart" "dialogue"
-    Then I should see "Chart saved."
-    And I should see "Users who never logged in"
+  Scenario: A deferred live card with no stored run offers Run now alone
+    Given I visit "/local/aicharts/index.php?skiplive=1"
+    Then I should see "Not run yet — this live query runs when you ask."
+    And I should see "limit 500 · not run"
+    And "Show chart" "button" should not exist
+    And "Run now" "button" should exist in the "[data-region=aic-card][data-name='enrolments per course']" "css_element"
+
+  Scenario: Run now on a live card that has never run stores the run at once
+    Given I visit "/local/aicharts/index.php?skiplive=1"
+    When I click on "Run now" "button" in the "[data-region=aic-card][data-name='enrolments per course']" "css_element"
+    Then I should see "Run stored"
+    And I should see "last run:" in the "[data-region=aic-card][data-name='enrolments per course']" "css_element"
+    When I visit "/local/aicharts/index.php?skiplive=1"
+    Then "Run again" "button" should exist in the "[data-region=aic-card][data-name='enrolments per course']" "css_element"
+    And I should not see "Not run yet" in the "[data-region=aic-card][data-name='enrolments per course']" "css_element"
+
+  Scenario: Pause a live chart from its card
+    When I open the action menu in "[data-region=aic-card][data-name='enrolments per course']" "css_element"
+    And I choose "Pause" in the open action menu
+    Then I should see "Chart paused."
+    And I should see "Paused — not run until resumed."

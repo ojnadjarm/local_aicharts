@@ -26,7 +26,7 @@ use local_aicharts\local\chart_repository;
 use moodle_exception;
 
 /**
- * Pauses or resumes one scheduled chart.
+ * Pauses or resumes one chart.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
@@ -41,15 +41,15 @@ class set_chart_enabled extends external_api {
     public static function execute_parameters(): external_function_parameters {
         return new external_function_parameters([
             'chartid' => new external_value(PARAM_INT, 'The chart to pause or resume.'),
-            'enabled' => new external_value(PARAM_BOOL, 'Whether the chart runs on its schedule.'),
+            'enabled' => new external_value(PARAM_BOOL, 'Whether the chart runs.'),
         ]);
     }
 
     /**
-     * Stores the new state, so a paused chart is no longer queued by the scheduler.
+     * Stores the new state: a paused chart is neither run on load nor queued by the scheduler.
      *
      * @param int $chartid The chart to pause or resume.
-     * @param bool $enabled Whether the chart runs on its schedule.
+     * @param bool $enabled Whether the chart runs.
      * @return array The state the chart is in.
      */
     public static function execute(int $chartid, bool $enabled): array {
@@ -66,10 +66,6 @@ class set_chart_enabled extends external_api {
         if (!$chart) {
             throw new moodle_exception('chartnotfound', 'local_aicharts');
         }
-        if ($chart->runmode === 'live') {
-            throw new moodle_exception('pausenotscheduled', 'local_aicharts');
-        }
-
         chart_repository::set_enabled((int) $chart->id, $enabled);
 
         notification::success(get_string($enabled ? 'chartresumed' : 'chartpaused', 'local_aicharts'));
@@ -84,7 +80,7 @@ class set_chart_enabled extends external_api {
      */
     public static function execute_returns(): external_single_structure {
         return new external_single_structure([
-            'enabled' => new external_value(PARAM_BOOL, 'Whether the chart runs on its schedule.'),
+            'enabled' => new external_value(PARAM_BOOL, 'Whether the chart runs.'),
         ]);
     }
 }

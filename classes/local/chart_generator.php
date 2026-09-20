@@ -34,6 +34,9 @@ class chart_generator {
     /** @var string Message sent back to the model with the rejection; %s is the sanitised error. */
     protected const RETRY_FEEDBACK = 'Your answer was rejected: %s Reply again in the same JSON format with a corrected answer.';
 
+    /** @var int Characters of an unreadable answer kept in the log. */
+    protected const LOGGED_ANSWER_LENGTH = 300;
+
     /** @var generation_result[] Results of this request, keyed by the hash of their input. */
     protected static array $results = [];
 
@@ -41,36 +44,68 @@ class chart_generator {
      * Generate a chart for a request, reusing the result of an identical request in this process.
      *
      * @param string $prompt What the user asked for.
-     * @param string $schemahint Tables or columns the user pointed at.
-     * @param string $charthint How the user wants the result drawn.
-     * @param string $sqlhint Filters or joins the user wants applied.
+     * @param string $sqlhint A starting query the model may reuse or improve.
      * @param int $maxrows Rows to return at most.
      * @param int $userid Who asked.
      * @return generation_result
      */
-    public static function generate(
-        string $prompt,
-        string $schemahint,
-        string $charthint,
-        string $sqlhint,
-        int $maxrows,
-        int $userid
-    ): generation_result {
+    public static function generate(string $prompt, string $sqlhint, int $maxrows, int $userid): generation_result {
         $maxrows = self::row_limit($maxrows);
-        $key = sha1(implode('|', [$prompt, $schemahint, $charthint, $sqlhint, $maxrows, $userid]));
+        $key = sha1(implode('|', [$prompt, $sqlhint, $maxrows, $userid]));
         if (!isset(self::$results[$key])) {
-            $messages = prompt_builder::build_messages($prompt, $schemahint, $charthint, $sqlhint);
-            [$result, $content] = self::attempt($messages, $maxrows);
-            self::log($result, $prompt, $userid);
+            $messages = prompt_builder::build_messages($prompt, $sqlhint);
+            [$result, $content] = self::attempt($messages, $prompt, $maxrows);
+            self::log($result, $prompt, $userid, $content);
             if (in_array($result->status, self::RETRY_STATUSES, true)) {
                 $messages[] = ['role' => 'assistant', 'content' => $content];
                 $messages[] = ['role' => 'user', 'content' => sprintf(self::RETRY_FEEDBACK, $result->errormessage)];
-                [$result] = self::attempt($messages, $maxrows);
-                self::log($result, $prompt, $userid);
+                [$result, $content] = self::attempt($messages, $prompt, $maxrows);
+                self::log($result, $prompt, $userid, $content);
             }
             self::$results[$key] = $result;
         }
         return self::$results[$key];
+    }
+
+    /**
+     * Ask how to draw the known columns of a result; one attempt, logged without a query.
+     *
+     * @param string[] $columns The result columns, the label column first.
+     * @param array $samplerows A few result rows.
+     * @param string $charthint How the user wants the result drawn.
+     * @param string $kind oneshot or trend.
+     * @param int $userid Who asked.
+     * @return generation_result Status chart, refused, invalid_json or llm_error.
+     */
+    public static function generate_chart(
+        array $columns,
+        array $samplerows,
+        string $charthint,
+        string $kind,
+        int $userid
+    ): generation_result {
+        $messages = prompt_builder::chart_messages($columns, $samplerows, $charthint, $kind);
+        $response = client_factory::create()->generate($messages, prompt_builder::CHART_SCHEMA);
+        if ($response->has_error()) {
+            $result = new generation_result(
+                'llm_error',
+                errormessage: $response->errormessage ?: $response->errorcode,
+                errorcode: $response->errorcode,
+            );
+        } else {
+            try {
+                $spec = response_parser::parse_chart($response->content);
+                $result = new generation_result('refused');
+                if ($spec) {
+                    $chartjson = chart_builder::from_controls(chart_builder::controls($spec));
+                    $result = new generation_result('chart', $spec->title, chartjson: $chartjson);
+                }
+            } catch (moodle_exception $e) {
+                $result = new generation_result('invalid_json', errormessage: $e->getMessage());
+            }
+        }
+        self::log($result, $charthint, $userid, $response->content);
+        return $result;
     }
 
     /**
@@ -84,10 +119,11 @@ class chart_generator {
      * Ask the model, parse its answer and run the query.
      *
      * @param array $messages Conversation to send.
+     * @param string $prompt What the user asked for; names the chart when the answer does not.
      * @param int $maxrows Rows to return at most.
      * @return array The generation_result and the raw answer text.
      */
-    protected static function attempt(array $messages, int $maxrows): array {
+    protected static function attempt(array $messages, string $prompt, int $maxrows): array {
         $response = client_factory::create()->generate($messages, prompt_builder::response_schema());
         if ($response->has_error()) {
             return [new generation_result(
@@ -98,7 +134,7 @@ class chart_generator {
         }
 
         try {
-            $answer = response_parser::parse($response->content);
+            $answer = response_parser::parse($response->content, $prompt);
         } catch (moodle_exception $e) {
             return [new generation_result('invalid_json', errormessage: $e->getMessage()), $response->content];
         }
@@ -144,9 +180,15 @@ class chart_generator {
      * @param generation_result $result What the attempt produced.
      * @param string $prompt What the user asked for.
      * @param int $userid Who asked.
+     * @param string $content Raw answer text, kept after the reason when it could not be read.
      */
-    protected static function log(generation_result $result, string $prompt, int $userid): void {
+    protected static function log(generation_result $result, string $prompt, int $userid, string $content = ''): void {
         global $DB;
+
+        $errormessage = $result->errormessage;
+        if ($result->status === 'invalid_json' && $content !== '') {
+            $errormessage .= ' Answer: ' . \core_text::substr($content, 0, self::LOGGED_ANSWER_LENGTH);
+        }
 
         $DB->insert_record('local_aicharts_run', (object) [
             'chartid' => null,
@@ -154,7 +196,7 @@ class chart_generator {
             'prompt' => $prompt,
             'sqltext' => $result->sql !== '' ? $result->sql : null,
             'status' => $result->has_error() ? $result->status : 'ok',
-            'errormessage' => $result->errormessage !== '' ? $result->errormessage : null,
+            'errormessage' => $errormessage !== '' ? $errormessage : null,
             'numrows' => $result->has_error() ? null : $result->rowcount,
             'durationms' => $result->durationms,
             'timecreated' => time(),

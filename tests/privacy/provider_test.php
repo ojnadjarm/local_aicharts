@@ -20,6 +20,7 @@ use core_privacy\local\request\approved_contextlist;
 use core_privacy\local\request\approved_userlist;
 use core_privacy\local\request\userlist;
 use core_privacy\local\request\writer;
+use local_aicharts\local\point_store;
 
 /**
  * Tests for the privacy provider.
@@ -40,24 +41,30 @@ final class provider_test extends \core_privacy\tests\provider_testcase {
     }
 
     /**
-     * The metadata names the three tables, the two subsystems and the preference.
+     * The metadata names the five tables, the two subsystems, the preference and the series hint.
      */
     public function test_get_metadata(): void {
         $collection = provider::get_metadata(new \core_privacy\local\metadata\collection('local_aicharts'));
 
         $names = [];
+        $fields = [];
         foreach ($collection->get_collection() as $item) {
             $names[] = $item->get_name();
+            $fields[$item->get_name()] = $item->get_privacy_fields();
         }
 
         $this->assertEqualsCanonicalizing([
             'local_aicharts_chart',
+            'local_aicharts_query',
+            'local_aicharts_point',
             'local_aicharts_run',
             'local_aicharts_result',
             'core_files',
             'core_message',
             'local_aicharts_view',
         ], $names);
+        $this->assertArrayHasKey('hint', $fields['local_aicharts_query']);
+        $this->assertSame(['serieslabel', 'timepoint', 'value'], array_keys($fields['local_aicharts_point']));
     }
 
     /**
@@ -130,6 +137,7 @@ final class provider_test extends \core_privacy\tests\provider_testcase {
             'userid' => $author->id,
             'timecreated' => time(),
         ]);
+        point_store::append($chart, ['Users per country' => 12], time(), null);
 
         $this->export_all_data_for_user($author->id, 'local_aicharts');
 
@@ -141,6 +149,11 @@ final class provider_test extends \core_privacy\tests\provider_testcase {
         $this->assertCount(1, $charts->charts);
         $this->assertEquals('users per country', $charts->charts[0]->prompt);
         $this->assertEquals(get_string('yes'), $charts->charts[0]->creator);
+        $this->assertCount(1, $charts->charts[0]->queries);
+        $this->assertEquals('Users per country', $charts->charts[0]->queries[0]->label);
+        $this->assertCount(1, $charts->charts[0]->points);
+        $this->assertEquals('Users per country', $charts->charts[0]->points[0]->series);
+        $this->assertEquals(12, $charts->charts[0]->points[0]->value);
 
         $runs = $writer->get_data([$root, get_string('privacy:path:runs', 'local_aicharts')]);
         $this->assertCount(1, $runs->runs);
@@ -257,11 +270,6 @@ final class provider_test extends \core_privacy\tests\provider_testcase {
         $record = (object) [
             'name' => 'Users per country',
             'prompt' => 'users per country',
-            'schemahint' => '',
-            'charthint' => '',
-            'sqlhint' => '',
-            'sqltext' => 'SELECT country, COUNT(*) FROM {user} GROUP BY country',
-            'params' => '{}',
             'chartjson' => '{"type":"bar"}',
             'emailto' => implode(',', $recipients),
             'userid' => $userid,
@@ -270,6 +278,13 @@ final class provider_test extends \core_privacy\tests\provider_testcase {
             'timemodified' => $now,
         ];
         $record->id = $DB->insert_record('local_aicharts_chart', $record);
+        $DB->insert_record('local_aicharts_query', (object) [
+            'chartid' => $record->id,
+            'label' => $record->name,
+            'sqltext' => 'SELECT country, COUNT(*) FROM {user} GROUP BY country',
+            'params' => '{}',
+            'sortorder' => 0,
+        ]);
 
         return $record;
     }

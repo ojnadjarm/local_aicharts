@@ -26,22 +26,27 @@
     * icon - Font Awesome class of the chart type.
     * iconlabel - Text read instead of the type icon.
     * menu - The rendered actions menu, empty when there is none.
+    * canmanage - Whether the user may run the chart now.
     * live - Whether the chart runs when the page loads.
     * scheduled - Whether the chart runs on a schedule.
+    * trend - Whether every run adds one point per series.
+    * trendlabel - Text read instead of the trend icon.
+    * pointsline - How many points a trend chart holds.
     * schedulelabel - Text read instead of the clock icon.
     * runmodelabel - The run mode as a footer phrase.
     * runhourformatted - The run hour as HH:MM.
-    * historyurl - Link to the run history of the chart.
+    * viewurl - Link to the page of the chart.
     * queued - Whether a run of the chart waits for cron.
     * emailed - Whether the result is sent to recipients.
     * emailrecipients - Text read instead of the envelope icon.
-    * lastrunformatted - When the shown result was stored.
+    * lastrunformatted - When the chart last stored a run.
     * lastrunfailed - Whether a later run failed.
     * paused - Whether the chart is paused.
-    * deferred - Whether the chart is loaded on request.
+    * deferred - Whether a live chart was not run on load, so it shows its stored run instead.
     * failed - Whether the run failed.
     * errormessage - Why the run failed.
     * notrunyet - Whether the chart has no stored result.
+    * notloaded - Whether a live chart has no stored result and was not run on load.
     * nextrunformatted - When the chart runs next.
     * refreshurl - Link reloading the dashboard.
     * hasresult - Whether the card shows a result.
@@ -57,8 +62,12 @@
         "icon": "fa-chart-column",
         "iconlabel": "Bar chart",
         "menu": "",
+        "canmanage": true,
+        "viewurl": "/local/aicharts/view.php?id=1",
         "live": true,
+        "queued": false,
         "scheduled": false,
+        "trend": false,
         "emailed": false,
         "paused": false,
         "deferred": true,
@@ -69,6 +78,10 @@
     <div class="card-header d-flex align-items-center gap-2">
         <i class="icon fa {{icon}} m-0" aria-hidden="true"></i>
         <span class="visually-hidden">{{iconlabel}}</span>
+        {{#trend}}
+            <i class="icon fa fa-arrow-trend-up m-0 text-muted" aria-hidden="true"></i>
+            <span class="visually-hidden">{{trendlabel}}</span>
+        {{/trend}}
         {{#scheduled}}
             <i class="icon fa fa-clock m-0 text-muted" aria-hidden="true"></i>
             <span class="visually-hidden">{{schedulelabel}}</span>
@@ -77,21 +90,21 @@
             <i class="icon fa fa-envelope m-0 text-muted" aria-hidden="true"></i>
             <span class="visually-hidden">{{emailrecipients}}</span>
         {{/emailed}}
-        <h3 class="h6 mb-0 flex-grow-1">{{name}}</h3>
+        <h3 class="h6 mb-0 flex-grow-1"><a href="{{viewurl}}">{{name}}</a></h3>
         {{{menu}}}
     </div>
-    <div class="card-body" data-region="aic-card-body">
+    <div class="card-body d-flex flex-column gap-3">
         {{> local_aicharts/result_card_body}}
     </div>
     <div class="card-footer text-muted small">
-        {{#paused}}{{#str}}paused, local_aicharts{{/str}}{{/paused}}
-        {{#deferred}}
-            <span data-region="aic-deferred-note">{{#str}}notloadedlimit, local_aicharts, {{maxrows}}{{/str}}</span>
-        {{/deferred}}
+        {{#paused}}{{#scheduled}}{{runmodelabel}} · {{runhourformatted}} · {{/scheduled}}{{#str}}paused, local_aicharts{{/str}}{{/paused}}
+        {{#notloaded}}
+            <span>{{#str}}notloadedlimit, local_aicharts, {{maxrows}}{{/str}}</span>
+        {{/notloaded}}
         {{#hasresult}}
             <div class="d-flex justify-content-between flex-wrap gap-1">
                 <span>{{rowsline}}</span>
-                {{#live}}<span>{{#str}}ranjustnow, local_aicharts{{/str}}</span>{{/live}}
+                {{#live}}{{^deferred}}<span>{{#str}}ranjustnow, local_aicharts{{/str}}</span>{{/deferred}}{{/live}}
             </div>
         {{/hasresult}}
         {{#scheduled}}
@@ -99,6 +112,7 @@
                 <div class="mt-1">
                     {{#lastrunformatted}}{{.}} · {{/lastrunformatted}}
                     {{runmodelabel}} · {{runhourformatted}}
+                    {{#pointsline}} · {{.}}{{/pointsline}}
                     {{#queued}} · {{#str}}queued, local_aicharts{{/str}}{{/queued}}
                 </div>
                 {{#lastrunfailed}}
@@ -108,10 +122,15 @@
                     </details>
                 {{/lastrunfailed}}
             {{/paused}}
-            <div class="mt-1"><a href="{{historyurl}}">{{#str}}runhistory, local_aicharts{{/str}}</a></div>
         {{/scheduled}}
         {{#live}}
-            {{^paused}}<div class="mt-1">{{#str}}livenotice, local_aicharts{{/str}}</div>{{/paused}}
+            {{^paused}}
+                <div class="mt-1">
+                    {{^notloaded}}{{#lastrunformatted}}{{.}} · {{/lastrunformatted}}{{/notloaded}}
+                    {{#str}}livenotice, local_aicharts{{/str}}
+                    {{#queued}} · {{#str}}queued, local_aicharts{{/str}}{{/queued}}
+                </div>
+            {{/paused}}
         {{/live}}
     </div>
 </div>

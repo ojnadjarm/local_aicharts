@@ -22,10 +22,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-use core\context\system;
-use local_aicharts\local\chart_repository;
 use local_aicharts\local\result_store;
-use local_aicharts\output\dashboard;
 
 /**
  * Serves the stored result files.
@@ -74,26 +71,4 @@ function local_aicharts_pluginfile(
     }
 
     send_stored_file($file, 0, 0, true, $options);
-}
-
-/**
- * Renders the body of one chart card, running the query the card shows.
- *
- * @param array $args Fragment arguments; id is the chart id.
- * @return string The rendered card body.
- */
-function local_aicharts_output_fragment_card(array $args): string {
-    global $PAGE;
-
-    require_capability('local/aicharts:view', system::instance());
-
-    $chart = chart_repository::get((int) ($args['id'] ?? 0));
-    if (!$chart) {
-        throw new moodle_exception('chartnotfound', 'local_aicharts');
-    }
-
-    $output = $PAGE->get_renderer('core');
-    $body = (new dashboard())->export_card_body($output, $chart);
-
-    return $output->render_from_template('local_aicharts/result_card_body', $body);
 }

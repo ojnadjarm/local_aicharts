@@ -34,7 +34,6 @@ final class run_chart_test extends \advanced_testcase {
         parent::setUp();
         $this->resetAfterTest();
         $this->setAdminUser();
-        set_config('allowedtables', "role\nuser\n", 'local_aicharts');
         set_config('maxrowsmax', 500, 'local_aicharts');
         set_config('resultretention', 30, 'local_aicharts');
     }
@@ -49,8 +48,11 @@ final class run_chart_test extends \advanced_testcase {
         $id = chart_repository::save((object) [
             'name' => 'Roles',
             'prompt' => 'roles',
-            'sqltext' => $sql,
-            'params' => '{}',
+            'queries' => [[
+                'label' => 'Roles',
+                'sqltext' => $sql,
+                'params' => '{}',
+            ]],
             'chartjson' => '{"type":"bar","labels":"shortname","series":["total"]}',
             'runmode' => 'daily',
             'runhour' => 4,
@@ -210,5 +212,117 @@ final class run_chart_test extends \advanced_testcase {
         $this->assertCount(2, $results);
         $latest = reset($results);
         $this->assertSame('ok', $latest->status);
+    }
+
+    /**
+     * A chart with two queries stores the merged rows: the label column plus one column per query.
+     *
+     * @covers \local_aicharts\task\run_chart::run
+     * @covers \local_aicharts\local\query_runner::run_all
+     */
+    public function test_two_query_chart_stores_merged_csv(): void {
+        $id = chart_repository::save((object) [
+            'name' => 'Roles',
+            'prompt' => 'roles',
+            'queries' => [
+                ['label' => 'One', 'sqltext' => 'SELECT shortname, 1 AS total FROM {role} ORDER BY shortname', 'params' => '{}'],
+                [
+                    'label' => 'Two',
+                    'sqltext' => 'SELECT shortname, 2 AS total FROM {role} WHERE shortname = :name',
+                    'params' => '{"name":"student"}',
+                ],
+            ],
+            'chartjson' => '{"type":"bar","labelcolumn":"shortname","series":[{"column":"One"},{"column":"Two"}]}',
+            'runmode' => 'daily',
+            'runhour' => 4,
+            'maxrows' => 100,
+        ]);
+
+        $result = run_chart::run(chart_repository::get($id), 'scheduled');
+        $rows = result_store::load_rows($result);
+
+        $this->assertSame('ok', $result->status);
+        $this->assertSame(['shortname', 'One', 'Two'], array_keys(reset($rows)));
+        $byname = array_column($rows, null, 'shortname');
+        $this->assertSame('2', $byname['student']['Two']);
+        $this->assertSame('', $byname['manager']['Two']);
+        $this->assertSame('1', $byname['manager']['One']);
+    }
+
+    /**
+     * Saves a daily trend chart with the given queries.
+     *
+     * @param array $queries Query rows with label, sqltext and params.
+     * @return stdClass The saved chart.
+     */
+    protected function create_trend_chart(array $queries): stdClass {
+        $id = chart_repository::save((object) [
+            'name' => 'Trend',
+            'prompt' => 'trend',
+            'queries' => $queries,
+            'chartjson' => '{"type":"line","labelcolumn":"runtime","series":[{"column":"Roles"}]}',
+            'kind' => 'trend',
+            'runmode' => 'daily',
+            'runhour' => 4,
+            'maxrows' => 100,
+        ]);
+        return chart_repository::get($id);
+    }
+
+    /**
+     * Every run of a trend chart adds one point per series and stores every point so far.
+     *
+     * @covers \local_aicharts\task\run_chart::execute
+     * @covers \local_aicharts\task\run_chart::run
+     * @covers \local_aicharts\local\point_store::append
+     * @covers \local_aicharts\local\point_store::link_result
+     */
+    public function test_trend_run_appends_point_and_stores_accumulated_rows(): void {
+        global $DB;
+
+        $this->setTimezone('UTC');
+        $user = $this->getDataGenerator()->create_user();
+        $chart = $this->create_trend_chart([
+            ['label' => 'Roles', 'sqltext' => 'SELECT COUNT(*) AS total FROM {role}', 'params' => '{}'],
+            ['label' => 'Users', 'sqltext' => 'SELECT COUNT(*) AS total FROM {user}', 'params' => '{}'],
+        ]);
+
+        manager::queue_adhoc_task(run_chart::instance($chart->id, 'scheduled'), true);
+        $this->run_queue();
+        $DB->set_field('local_aicharts_point', 'timepoint', 1700000000, ['chartid' => $chart->id]);
+        $second = run_chart::run($chart, 'manual', $user->id);
+
+        $points = $DB->get_records('local_aicharts_point', ['chartid' => $chart->id], 'timepoint, id');
+        $this->assertCount(4, $points);
+        $this->assertSame([(string) $second->id, (string) $second->id], array_slice(array_column($points, 'resultid'), 2));
+
+        $rows = result_store::load_rows($second);
+        $this->assertSame('ok', $second->status);
+        $this->assertSame(2, (int) $second->numrows);
+        $this->assertSame(['runtime', 'Roles', 'Users'], array_keys($rows[0]));
+        $this->assertSame('14/11/23, 22:13', $rows[0]['runtime']);
+        $this->assertSame($DB->count_records('role'), (int) $rows[1]['Roles']);
+        $this->assertSame($DB->count_records('user'), (int) $rows[1]['Users']);
+        $this->assertSame(userdate($second->timecreated, get_string('strftimedatetimeshort')), $rows[1]['runtime']);
+    }
+
+    /**
+     * A failing series stores a failed result and adds no point.
+     *
+     * @covers \local_aicharts\task\run_chart::run
+     */
+    public function test_trend_failed_series_adds_no_point(): void {
+        global $DB;
+
+        $chart = $this->create_trend_chart([
+            ['label' => 'Roles', 'sqltext' => 'SELECT COUNT(*) AS total FROM {role}', 'params' => '{}'],
+            ['label' => 'Many', 'sqltext' => 'SELECT id FROM {role}', 'params' => '{}'],
+        ]);
+
+        $result = run_chart::run($chart, 'scheduled');
+
+        $this->assertSame('db_error', $result->status);
+        $this->assertStringStartsWith("Series 'Many' returned", $result->errormessage);
+        $this->assertSame(0, $DB->count_records('local_aicharts_point', ['chartid' => $chart->id]));
     }
 }

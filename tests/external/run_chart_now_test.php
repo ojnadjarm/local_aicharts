@@ -20,7 +20,7 @@ use core\task\manager;
 use stdClass;
 
 /**
- * Tests for the external function that queues a manual run.
+ * Tests for the external function that runs a chart at once.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
@@ -35,6 +35,7 @@ final class run_chart_now_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->setAdminUser();
         $DB->delete_records('local_aicharts_chart');
+        set_config('maxrowsmax', 500, 'local_aicharts');
     }
 
     /**
@@ -47,8 +48,11 @@ final class run_chart_now_test extends \advanced_testcase {
         $id = \local_aicharts\local\chart_repository::save((object) [
             'name' => 'Roles',
             'prompt' => 'roles',
-            'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
-            'params' => '{}',
+            'queries' => [[
+                'label' => 'Roles',
+                'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
+                'params' => '{}',
+            ]],
             'chartjson' => '{"type":"bar","labels":"shortname","series":["total"]}',
             'runmode' => $runmode,
             'runhour' => 0,
@@ -59,40 +63,83 @@ final class run_chart_now_test extends \advanced_testcase {
     }
 
     /**
-     * The first call queues a manual ad hoc task for the chart.
+     * A live chart that has never run stores its result before the call returns, without cron.
      *
      * @covers \local_aicharts\external\run_chart_now::execute
      */
-    public function test_queues_manual_task(): void {
+    public function test_run_is_stored_at_once(): void {
+        global $DB, $USER;
+
+        $chart = $this->create_chart('live');
+
+        $result = run_chart_now::execute((int) $chart->id);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertGreaterThan(0, $result['runid']);
+        $stored = $DB->get_record('local_aicharts_result', ['id' => $result['runid']]);
+        $this->assertSame('manual', $stored->runtrigger);
+        $this->assertSame((int) $USER->id, (int) $stored->userid);
+        $this->assertEquals(0, $stored->emailed);
+        $this->assertEmpty(manager::get_adhoc_tasks('\\local_aicharts\\task\\run_chart'));
+        $this->assertEquals(
+            $stored->timecreated,
+            $DB->get_field('local_aicharts_chart', 'lastrun', ['id' => $chart->id])
+        );
+    }
+
+    /**
+     * Pressing the button twice leaves two runs in the history, newest first.
+     *
+     * @covers \local_aicharts\external\run_chart_now::execute
+     */
+    public function test_two_runs_are_two_records(): void {
+        $chart = $this->create_chart('live');
+
+        $first = run_chart_now::execute((int) $chart->id);
+        $second = run_chart_now::execute((int) $chart->id);
+
+        $results = \local_aicharts\local\result_store::list_for_chart((int) $chart->id);
+        $this->assertCount(2, $results);
+        $this->assertSame((int) $second['runid'], (int) reset($results)->id);
+        $this->assertNotSame($first['runid'], $second['runid']);
+        $this->assertEmpty(manager::get_adhoc_tasks('\\local_aicharts\\task\\run_chart'));
+    }
+
+    /**
+     * A scheduled chart runs at once as well and keeps its stored file.
+     *
+     * @covers \local_aicharts\external\run_chart_now::execute
+     */
+    public function test_scheduled_chart_runs_at_once_with_its_file(): void {
         $chart = $this->create_chart();
 
         $result = run_chart_now::execute((int) $chart->id);
 
-        $this->assertTrue($result['queued']);
-        $tasks = manager::get_adhoc_tasks('\\local_aicharts\\task\\run_chart');
-        $this->assertCount(1, $tasks);
-        $task = reset($tasks);
-        $this->assertSame('manual', $task->get_custom_data()->trigger);
-        $this->assertSame((int) $chart->id, (int) $task->get_custom_data()->chartid);
+        $stored = \local_aicharts\local\result_store::get((int) $result['runid']);
+        $this->assertSame('ok', $stored->status);
+        $this->assertNotEmpty(\local_aicharts\local\result_store::load_rows($stored));
     }
 
     /**
-     * A second call while the first task waits reports that nothing new was queued.
+     * A paused chart is reported as paused and stores nothing.
      *
      * @covers \local_aicharts\external\run_chart_now::execute
      */
-    public function test_second_call_reports_already_queued(): void {
-        $chart = $this->create_chart();
+    public function test_paused_chart_is_not_run(): void {
+        global $DB;
 
-        run_chart_now::execute((int) $chart->id);
+        $chart = $this->create_chart('live');
+        \local_aicharts\local\chart_repository::set_enabled((int) $chart->id, false);
+
         $result = run_chart_now::execute((int) $chart->id);
 
-        $this->assertFalse($result['queued']);
-        $this->assertCount(1, manager::get_adhoc_tasks('\\local_aicharts\\task\\run_chart'));
+        $this->assertSame('paused', $result['status']);
+        $this->assertSame(0, $result['runid']);
+        $this->assertFalse($DB->record_exists('local_aicharts_result', ['chartid' => $chart->id]));
     }
 
     /**
-     * A user without the manage capability may not queue a run.
+     * A user without the manage capability may not run a chart.
      *
      * @covers \local_aicharts\external\run_chart_now::execute
      */
@@ -102,42 +149,5 @@ final class run_chart_now_test extends \advanced_testcase {
 
         $this->expectException(\required_capability_exception::class);
         run_chart_now::execute((int) $chart->id);
-    }
-
-    /**
-     * A live chart has nothing to queue.
-     *
-     * @covers \local_aicharts\external\run_chart_now::execute
-     */
-    public function test_live_chart_is_rejected(): void {
-        $chart = $this->create_chart('live');
-
-        $this->expectException(\moodle_exception::class);
-        run_chart_now::execute((int) $chart->id);
-    }
-
-    /**
-     * The queued run is really the one the ad hoc task runner picks up.
-     *
-     * @covers \local_aicharts\external\run_chart_now::execute
-     */
-    public function test_queued_task_runs_the_chart(): void {
-        global $DB;
-
-        set_config('allowedtables', "role\n", 'local_aicharts');
-        set_config('maxrowsmax', 500, 'local_aicharts');
-        $chart = $this->create_chart();
-
-        run_chart_now::execute((int) $chart->id);
-        $tasks = manager::get_adhoc_tasks('\\local_aicharts\\task\\run_chart');
-        $task = reset($tasks);
-        ob_start();
-        $task->execute();
-        ob_end_clean();
-
-        $this->assertTrue($DB->record_exists('local_aicharts_result', [
-            'chartid' => $chart->id,
-            'runtrigger' => 'manual',
-        ]));
     }
 }

@@ -124,6 +124,8 @@ final class email_result_test extends \advanced_testcase {
         $this->assertStringContainsString('data:image/png;base64,' . base64_encode('PNGBYTES'), $html);
         $this->assertStringContainsString('Users per role', $html);
         $this->assertStringContainsString('role1', $html);
+        $this->assertStringContainsString('width: 100%; max-width: 37.5rem; table-layout: fixed;', $html);
+        $this->assertStringNotContainsString('width: 600px', $html);
 
         $table = new email_result($this->make_chart(), $this->make_result(), $this->make_rows(3));
         $html = $output->render_from_template('local_aicharts/email_result', $table->export_for_template($output));
@@ -146,7 +148,7 @@ final class email_result_test extends \advanced_testcase {
         $this->assertStringContainsString('role: role1', $text);
         $this->assertStringNotContainsString('role: role11', $text);
         $this->assertStringContainsString(get_string('emailmorerows', 'local_aicharts', 2), $text);
-        $this->assertStringContainsString('/local/aicharts/history.php', $text);
+        $this->assertStringContainsString('/local/aicharts/view.php', $text);
         $this->assertStringContainsString(get_string('emailattached', 'local_aicharts'), $text);
         $this->assertStringContainsString(get_string('emailfooter', 'local_aicharts'), $text);
     }

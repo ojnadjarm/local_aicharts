@@ -27,6 +27,7 @@ require_once($CFG->libdir . '/adminlib.php');
 
 $view = optional_param('view', '', PARAM_ALPHA);
 $skiplive = optional_param('skiplive', 0, PARAM_BOOL);
+$saved = optional_param('saved', 0, PARAM_INT);
 
 admin_externalpage_setup('local_aicharts_dashboard');
 
@@ -36,5 +37,5 @@ if ($view === 'grid' || $view === 'list') {
 }
 
 echo $OUTPUT->header();
-echo $OUTPUT->render(new \local_aicharts\output\dashboard(null, $skiplive));
+echo $OUTPUT->render(new \local_aicharts\output\dashboard(null, $skiplive, $saved));
 echo $OUTPUT->footer();

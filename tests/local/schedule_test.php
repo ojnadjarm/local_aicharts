@@ -52,7 +52,7 @@ final class schedule_test extends \advanced_testcase {
     }
 
     /**
-     * A weekly chart is due at the first day of the site calendar week.
+     * A weekly chart is due on its own weekday, one by default.
      *
      * @covers \local_aicharts\local\schedule::due_time
      */
@@ -64,7 +64,56 @@ final class schedule_test extends \advanced_testcase {
     }
 
     /**
-     * A monthly chart is due on the first of the month.
+     * A weekly chart is due on the most recent occurrence of its weekday.
+     *
+     * @covers \local_aicharts\local\schedule::due_time
+     * @covers \local_aicharts\local\schedule::is_due
+     */
+    public function test_weekly_due_on_chosen_day(): void {
+        $wednesday = 3;
+        $friday = strtotime('2026-09-11 10:00 UTC');
+        $tuesday = strtotime('2026-09-08 10:00 UTC');
+
+        $this->assertSame(strtotime('2026-09-09 06:00 UTC'), schedule::due_time('weekly', 6, $friday, $wednesday));
+        $this->assertSame(strtotime('2026-09-02 06:00 UTC'), schedule::due_time('weekly', 6, $tuesday, $wednesday));
+        $this->assertTrue(schedule::is_due(self::chart('weekly', 6, null, $wednesday), $friday));
+        $ran = self::chart('weekly', 6, strtotime('2026-09-09 06:05 UTC'), $wednesday);
+        $this->assertFalse(schedule::is_due($ran, $friday));
+    }
+
+    /**
+     * A weekly chart on its own day is not due before its hour.
+     *
+     * @covers \local_aicharts\local\schedule::is_due
+     * @covers \local_aicharts\local\schedule::next_run
+     */
+    public function test_weekly_not_due_before_hour_on_its_day(): void {
+        $chart = self::chart('weekly', 6, null, 3);
+        $early = strtotime('2026-09-09 05:00 UTC');
+
+        $this->assertFalse(schedule::is_due($chart, $early));
+        $this->assertSame(strtotime('2026-09-09 06:00 UTC'), schedule::next_run($chart, $early));
+    }
+
+    /**
+     * Weekly runs keep their wall-clock hour across a DST change.
+     *
+     * @covers \local_aicharts\local\schedule::due_time
+     */
+    public function test_weekly_keeps_hour_across_dst(): void {
+        $this->setTimezone('Europe/Madrid');
+        $sunday = 0;
+        $tuesday = strtotime('2026-03-31 10:00 Europe/Madrid');
+
+        $this->assertSame(strtotime('2026-03-29 06:00 Europe/Madrid'), schedule::due_time('weekly', 6, $tuesday, $sunday));
+        $this->assertSame(
+            strtotime('2026-04-05 06:00 Europe/Madrid'),
+            schedule::next_run(self::chart('weekly', 6, null, $sunday), $tuesday)
+        );
+    }
+
+    /**
+     * A monthly chart is due on the first of the month by default.
      *
      * @covers \local_aicharts\local\schedule::due_time
      */
@@ -73,6 +122,39 @@ final class schedule_test extends \advanced_testcase {
 
         $this->assertSame(strtotime('2026-09-01 06:00 UTC'), schedule::due_time('monthly', 6, $now));
         $this->assertSame(0, schedule::due_time('live', 6, $now));
+    }
+
+    /**
+     * A monthly chart is due on its chosen day of the month.
+     *
+     * @covers \local_aicharts\local\schedule::due_time
+     * @covers \local_aicharts\local\schedule::is_due
+     */
+    public function test_monthly_due_on_chosen_day(): void {
+        $chart = self::chart('monthly', 6, null, 15);
+
+        $later = strtotime('2026-09-20 10:00 UTC');
+
+        $this->assertSame(strtotime('2026-09-15 06:00 UTC'), schedule::due_time('monthly', 6, $later, 15));
+        $this->assertFalse(schedule::is_due($chart, strtotime('2026-09-09 10:00 UTC')));
+        $this->assertTrue(schedule::is_due($chart, strtotime('2026-09-15 06:00 UTC')));
+    }
+
+    /**
+     * Day 31 means the last day of the month, so February is never skipped.
+     *
+     * @covers \local_aicharts\local\schedule::due_time
+     * @covers \local_aicharts\local\schedule::next_run
+     */
+    public function test_monthly_last_day_never_skips_short_months(): void {
+        $chart = self::chart('monthly', 6, null, schedule::LAST_DAY);
+
+        $february = strtotime('2027-02-28 10:00 UTC');
+
+        $this->assertSame(strtotime('2027-02-28 06:00 UTC'), schedule::due_time('monthly', 6, $february, 31));
+        $this->assertSame(strtotime('2027-02-28 06:00 UTC'), schedule::next_run($chart, strtotime('2027-01-31 10:00 UTC')));
+        $this->assertSame(strtotime('2027-03-31 06:00 UTC'), schedule::next_run($chart, $february));
+        $this->assertSame(strtotime('2027-02-28 06:00 UTC'), schedule::next_run($chart, strtotime('2027-02-10 10:00 UTC')));
     }
 
     /**
@@ -115,8 +197,28 @@ final class schedule_test extends \advanced_testcase {
         $this->assertSame(strtotime('2026-09-10 06:00 UTC'), schedule::next_run(self::chart('daily', 6), $now));
         $this->assertSame(strtotime('2026-09-09 22:00 UTC'), schedule::next_run(self::chart('daily', 22), $now));
         $this->assertSame(strtotime('2026-09-14 06:00 UTC'), schedule::next_run(self::chart('weekly', 6), $now));
+        $this->assertSame(strtotime('2026-09-11 06:00 UTC'), schedule::next_run(self::chart('weekly', 6, null, 5), $now));
+        $this->assertSame(strtotime('2026-09-16 06:00 UTC'), schedule::next_run(self::chart('weekly', 6, null, 3), $now));
         $this->assertSame(strtotime('2026-10-01 06:00 UTC'), schedule::next_run(self::chart('monthly', 6), $now));
+        $this->assertSame(strtotime('2026-09-15 06:00 UTC'), schedule::next_run(self::chart('monthly', 6, null, 15), $now));
+        $later = strtotime('2026-09-20 10:00 UTC');
+        $this->assertSame(strtotime('2026-10-15 06:00 UTC'), schedule::next_run(self::chart('monthly', 6, null, 15), $later));
         $this->assertSame(0, schedule::next_run(self::chart('live', 6), $now));
+    }
+
+    /**
+     * The schedule description names the day of a weekly or monthly chart.
+     *
+     * @covers \local_aicharts\local\schedule::describe
+     * @covers \local_aicharts\local\schedule::weekday_name
+     */
+    public function test_describe(): void {
+        $this->assertSame('daily', schedule::describe(self::chart('daily', 6)));
+        $this->assertSame('weekly on Monday', schedule::describe(self::chart('weekly', 6)));
+        $this->assertSame('weekly on Sunday', schedule::describe(self::chart('weekly', 6, null, 0)));
+        $this->assertSame('monthly on day 15', schedule::describe(self::chart('monthly', 6, null, 15)));
+        $this->assertSame('monthly on the last day', schedule::describe(self::chart('monthly', 6, null, 31)));
+        $this->assertSame('live', schedule::describe(self::chart('live', 6)));
     }
 
     /**
@@ -135,9 +237,10 @@ final class schedule_test extends \advanced_testcase {
      * @param string $runmode Run mode.
      * @param int $runhour Hour of the day.
      * @param int|null $lastrun Time of the last run.
+     * @param int $runday Weekday or day of the month.
      * @return \stdClass Chart record.
      */
-    private static function chart(string $runmode, int $runhour, ?int $lastrun = null): \stdClass {
-        return (object) ['runmode' => $runmode, 'runhour' => $runhour, 'lastrun' => $lastrun];
+    private static function chart(string $runmode, int $runhour, ?int $lastrun = null, int $runday = 1): \stdClass {
+        return (object) ['runmode' => $runmode, 'runhour' => $runhour, 'lastrun' => $lastrun, 'runday' => $runday];
     }
 }

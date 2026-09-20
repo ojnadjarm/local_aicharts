@@ -1,0 +1,35 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/assistant_state
+
+    A neutral box with an icon and a message about the assistant's answer.
+
+    Context variables required for this template:
+    * icon - Font Awesome class of the icon.
+    * body - Message HTML.
+
+    Example context (json):
+    {
+        "icon": "fa-ban",
+        "body": "This request is not a chart or report from Moodle data."
+    }
+}}
+<div class="local-aicharts-statebox d-flex gap-2 mt-2" role="status">
+    <i class="icon fa {{icon}} mt-1" aria-hidden="true"></i>
+    <div>{{{body}}}</div>
+</div>

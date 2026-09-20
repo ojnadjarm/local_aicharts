@@ -37,15 +37,20 @@ class result_table implements renderable, templatable {
     /** @var int How many rows are shown outside the details element. */
     protected int $inlinerows;
 
+    /** @var string Page the preview links to; empty renders the full table with a details element. */
+    protected string $viewurl;
+
     /**
      * Constructor.
      *
      * @param array $rows The result rows.
      * @param int $inlinerows How many rows are shown outside the details element.
+     * @param string $viewurl Page a fixed-height preview links to instead of showing every row.
      */
-    public function __construct(array $rows, int $inlinerows = 5) {
+    public function __construct(array $rows, int $inlinerows = 5, string $viewurl = '') {
         $this->rows = $rows;
         $this->inlinerows = $inlinerows;
+        $this->viewurl = $viewurl;
     }
 
     /**
@@ -56,13 +61,14 @@ class result_table implements renderable, templatable {
      */
     public function export_for_template(renderer_base $output): array {
         $rows = array_values($this->rows);
+        $preview = $this->viewurl !== '';
 
         $head = [];
         if ($rows) {
             foreach (array_keys((array) reset($rows)) as $index => $name) {
                 $head[] = [
                     'name' => (string) $name,
-                    'colcap' => $index >= self::CAPPEDCOLUMNS,
+                    'colcap' => !$preview && $index >= self::CAPPEDCOLUMNS,
                 ];
             }
         }
@@ -73,13 +79,13 @@ class result_table implements renderable, templatable {
             foreach (array_values((array) $row) as $index => $value) {
                 $cells[] = [
                     'value' => (string) $value,
-                    'colcap' => $index >= self::CAPPEDCOLUMNS,
+                    'colcap' => !$preview && $index >= self::CAPPEDCOLUMNS,
                 ];
             }
             $body[] = ['cells' => $cells];
         }
 
-        $rest = array_slice($body, $this->inlinerows);
+        $rest = $preview ? [] : array_slice($body, $this->inlinerows);
 
         return [
             'head' => $head,
@@ -88,6 +94,8 @@ class result_table implements renderable, templatable {
             'total' => count($rows),
             'hasrows' => (bool) $rows,
             'hasrest' => (bool) $rest,
+            'preview' => $preview,
+            'viewurl' => $this->viewurl,
         ];
     }
 }

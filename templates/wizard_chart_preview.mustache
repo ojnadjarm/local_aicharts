@@ -1,0 +1,56 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/wizard_chart_preview
+
+    The preview card of the Chart step: the chart or table drawn from the current controls.
+
+    Context variables required for this template:
+    * body - The rendered chart, table or state box.
+    * count - The "N rows · M ms" line, empty when there is nothing to draw.
+    * formid - Id of the step form the Update preview button submits.
+    * limit - Rows the preview draws, 0 when it draws every row the Data step run returned.
+    * firstpoint - Whether the preview holds the first point of a trend chart.
+
+    Example context (json):
+    {
+        "body": "<div class=\"chart-area\"></div>",
+        "count": "12 rows returned · 79 ms",
+        "formid": "local-aicharts-step",
+        "limit": 50,
+        "firstpoint": false
+    }
+}}
+<div class="card local-aicharts-chart-preview" data-region="aic-preview">
+    <div class="card-header d-flex align-items-center gap-2">
+        <i class="icon fa fa-chart-column m-0" aria-hidden="true"></i>
+        <span class="flex-grow-1">{{#str}}preview, local_aicharts{{/str}}</span>
+        {{#count}}<span class="text-muted small">{{count}}</span>{{/count}}
+    </div>
+    <div class="card-body">
+        <div class="local-aicharts-chart">{{{body}}}</div>
+        {{#firstpoint}}
+            <p class="text-muted small mt-2 mb-0">{{#str}}firstpointnote, local_aicharts{{/str}}</p>
+        {{/firstpoint}}
+        <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+            <button type="submit" class="btn btn-secondary btn-sm" form="{{formid}}" name="updatepreview" value="1">
+                <i class="icon fa fa-arrow-rotate-right" aria-hidden="true"></i>{{#str}}updatepreview, local_aicharts{{/str}}
+            </button>
+            {{#limit}}<span class="text-muted small">{{#str}}previewsource, local_aicharts, {{limit}}{{/str}}</span>{{/limit}}
+        </div>
+    </div>
+</div>

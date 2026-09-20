@@ -94,4 +94,42 @@ final class result_table_test extends \advanced_testcase {
         $this->assertSame([false, false, false, true, true], array_column($context['head'], 'colcap'));
         $this->assertSame([false, false, false, true, true], array_column($context['inline'][0]['cells'], 'colcap'));
     }
+
+    /**
+     * The inline table and the full table both scroll inside a responsive wrapper.
+     *
+     * @covers \local_aicharts\output\result_table::export_for_template
+     */
+    public function test_tables_are_responsive(): void {
+        global $OUTPUT;
+        $this->resetAfterTest();
+
+        $html = $OUTPUT->render(new result_table($this->make_rows(7, 8)));
+
+        $this->assertSame(2, substr_count($html, 'class="table-responsive"'));
+        $this->assertSame(2, substr_count($html, '<table class="table table-sm">'));
+    }
+
+    /**
+     * Preview mode shows the inline rows in a fixed-height box with a link to the page instead of the details element.
+     *
+     * @covers \local_aicharts\output\result_table::export_for_template
+     */
+    public function test_preview_mode(): void {
+        global $OUTPUT, $PAGE;
+        $this->resetAfterTest();
+
+        $table = new result_table($this->make_rows(7, 5), 5, '/local/aicharts/view.php?id=3');
+        $context = $table->export_for_template($PAGE->get_renderer('core'));
+        $html = $OUTPUT->render($table);
+
+        $this->assertTrue($context['preview']);
+        $this->assertSame(7, $context['total']);
+        $this->assertSame([false, false, false, false, false], array_column($context['head'], 'colcap'));
+        $this->assertStringContainsString('class="local-aicharts-preview"', $html);
+        $this->assertStringContainsString('href="/local/aicharts/view.php?id=3"', $html);
+        $this->assertStringContainsString('Open — 7 rows', $html);
+        $this->assertStringNotContainsString('<details>', $html);
+        $this->assertStringNotContainsString('r6c1', $html);
+    }
 }

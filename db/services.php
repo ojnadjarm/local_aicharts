@@ -34,7 +34,7 @@ $functions = [
     ],
     'local_aicharts_run_chart_now' => [
         'classname' => 'local_aicharts\external\run_chart_now',
-        'description' => 'Queues a manual run of one scheduled chart.',
+        'description' => 'Runs one chart at once and stores the result.',
         'type' => 'write',
         'ajax' => true,
         'capabilities' => 'local/aicharts:manage',

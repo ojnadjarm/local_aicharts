@@ -142,6 +142,26 @@ class default_charts {
                 'series' => [],
             ],
         ],
+        'activeuserstrend' => [
+            'name' => 'Active users, trend',
+            'prompt' => 'How many users have been active in the last 30 days?',
+            'sql' => "SELECT COUNT(u.id) AS total
+                        FROM {user} u
+                       WHERE u.deleted = :deleted AND u.lastaccess > :since",
+            'params' => ['deleted' => 0, 'since' => 0],
+            'sincedays' => 30,
+            'kind' => 'trend',
+            'runmode' => 'daily',
+            'chart' => [
+                'type' => 'line',
+                'title' => 'Active users, trend',
+                'labelcolumn' => point_store::TIME_COLUMN,
+                'labelformat' => 'text',
+                'series' => [['column' => 'Active users, trend', 'label' => 'Active users']],
+                'xlabel' => 'Run',
+                'ylabel' => 'Users',
+            ],
+        ],
     ];
 
     /**
@@ -167,14 +187,33 @@ class default_charts {
                 'idnumber' => $idnumber,
                 'isdefault' => 1,
                 'prompt' => $definition['prompt'],
-                'sqltext' => $definition['sql'],
-                'params' => json_encode($definition['params']),
+                'queries' => [[
+                    'label' => $definition['name'],
+                    'sqltext' => $definition['sql'],
+                    'params' => json_encode(self::params($definition)),
+                ]],
                 'chartjson' => json_encode($definition['chart']),
+                'kind' => $definition['kind'] ?? 'oneshot',
+                'runmode' => $definition['runmode'] ?? schedule::MODE_LIVE,
                 'maxrows' => $maxrows,
             ]);
             $created++;
         }
 
         return $created;
+    }
+
+    /**
+     * The query parameters of a definition, the since parameter set from the seed time.
+     *
+     * @param array $definition One entry of self::CHARTS.
+     * @return array
+     */
+    public static function params(array $definition): array {
+        $params = $definition['params'];
+        if (isset($definition['sincedays'])) {
+            $params['since'] = time() - $definition['sincedays'] * DAYSECS;
+        }
+        return $params;
     }
 }

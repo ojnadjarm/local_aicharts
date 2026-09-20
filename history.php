@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * The stored runs of one chart.
+ * Former address of the chart page, kept for links in already sent emails.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
@@ -23,39 +23,10 @@
  */
 
 require(__DIR__ . '/../../config.php');
-require_once($CFG->libdir . '/adminlib.php');
 
-$id = required_param('id', PARAM_INT);
-$resultid = optional_param('resultid', 0, PARAM_INT);
-
-$urlparams = ['id' => $id];
-if ($resultid) {
-    $urlparams['resultid'] = $resultid;
+require_login();
+$params = ['id' => required_param('id', PARAM_INT)];
+if ($resultid = optional_param('resultid', 0, PARAM_INT)) {
+    $params['resultid'] = $resultid;
 }
-
-admin_externalpage_setup(
-    'local_aicharts_history',
-    '',
-    $urlparams,
-    new moodle_url('/local/aicharts/history.php', $urlparams)
-);
-
-$chart = \local_aicharts\local\chart_repository::get($id);
-if (!$chart) {
-    throw new moodle_exception('chartnotfound', 'local_aicharts');
-}
-
-$selected = null;
-if ($resultid) {
-    $selected = \local_aicharts\local\result_store::get($resultid);
-    if (!$selected || (int) $selected->chartid !== (int) $chart->id) {
-        throw new moodle_exception('resultnotfound', 'local_aicharts');
-    }
-}
-
-$PAGE->set_title(format_string($chart->name));
-$PAGE->navbar->add(format_string($chart->name));
-
-echo $OUTPUT->header();
-echo $OUTPUT->render(new \local_aicharts\output\history($chart, $selected));
-echo $OUTPUT->footer();
+redirect(new moodle_url('/local/aicharts/view.php', $params));

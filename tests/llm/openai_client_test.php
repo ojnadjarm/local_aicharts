@@ -19,6 +19,7 @@ namespace local_aicharts\llm;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
+use local_aicharts\local\prompt_builder;
 
 /**
  * Tests for the OpenAI-compatible client, against a mocked HTTP layer.
@@ -154,5 +155,26 @@ final class openai_client_test extends \advanced_testcase {
         $this->assertSame(openai_client::ERROR_NOKEY, $response->errorcode);
         $this->assertSame(get_string('error_llm_nokey', 'local_aicharts'), $response->errormessage);
         $this->assertCount(0, $history);
+    }
+
+    /**
+     * The posted schema requires every top-level property.
+     *
+     * @covers \local_aicharts\llm\openai_client::generate
+     * @covers \local_aicharts\local\prompt_builder::response_schema
+     */
+    public function test_schema_requires_every_property(): void {
+        $history = [];
+        ['mock' => $mock] = $this->get_mocked_http_client($history);
+        $mock->append(new Response(200, [], json_encode([
+            'choices' => [['message' => ['role' => 'assistant', 'content' => '{"status":"refused"}']]],
+        ])));
+
+        (new openai_client())->generate(self::MESSAGES, prompt_builder::response_schema());
+
+        $schema = json_decode((string) $history[0]['request']->getBody(), true)['response_format']['json_schema']['schema'];
+        $this->assertSame(['status', 'name', 'sql', 'params', 'chart', 'notes'], $schema['required']);
+        $this->assertSame(['string', 'null'], $schema['properties']['name']['type']);
+        $this->assertSame(['object', 'null'], $schema['properties']['chart']['type']);
     }
 }
