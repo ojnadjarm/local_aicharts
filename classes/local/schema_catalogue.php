@@ -17,7 +17,7 @@
 namespace local_aicharts\local;
 
 /**
- * Allowed tables and the short relation hints sent with every request.
+ * The table catalogue and the short relation hints sent with every request.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
@@ -55,40 +55,37 @@ class schema_catalogue {
             'timemodified.',
         'cohort' => 'id, contextid (-> context.id), name, idnumber, visible.',
         'cohort_members' => 'id, cohortid (-> cohort.id), userid (-> user.id), timeadded.',
+        'groups' => 'id, courseid (-> course.id), name, idnumber, timecreated.',
+        'groups_members' => 'id, groupid (-> groups.id), userid (-> user.id), timeadded.',
+        'assign' => 'id, course (-> course.id), name, duedate, allowsubmissionsfromdate, grade. ' .
+            'Reached from course_modules.instance where modules.name = \'assign\'.',
+        'assign_submission' => 'id, assignment (-> assign.id), userid (-> user.id), status ' .
+            '(submitted, draft, new), attemptnumber, timecreated, timemodified.',
+        'assign_grades' => 'id, assignment (-> assign.id), userid (-> user.id), grader (-> user.id), ' .
+            'grade (-1 when ungraded), attemptnumber, timemodified.',
+        'quiz' => 'id, course (-> course.id), name, timeopen, timeclose, grade, sumgrades. ' .
+            'Reached from course_modules.instance where modules.name = \'quiz\'.',
+        'quiz_attempts' => 'id, quiz (-> quiz.id), userid (-> user.id), attempt, state ' .
+            '(inprogress, finished, abandoned), timestart, timefinish, sumgrades.',
+        'forum' => 'id, course (-> course.id), name, type. ' .
+            'Reached from course_modules.instance where modules.name = \'forum\'.',
+        'forum_discussions' => 'id, course (-> course.id), forum (-> forum.id), name, userid (-> user.id), ' .
+            'timemodified.',
+        'forum_posts' => 'id, discussion (-> forum_discussions.id), parent (0 for the first post), ' .
+            'userid (-> user.id), created, modified, subject.',
     ];
 
     /**
-     * Returns the tables the generated query may read.
+     * Returns the hint line of every catalogued table, keyed by table name.
      *
-     * @return string[] Unprefixed table names.
-     */
-    public static function allowed_tables(): array {
-        $setting = (string) get_config('local_aicharts', 'allowedtables');
-        $tables = [];
-        foreach (preg_split('/\R/', $setting) as $line) {
-            $table = trim($line);
-            if ($table !== '') {
-                $tables[$table] = true;
-            }
-        }
-        return array_keys($tables);
-    }
-
-    /**
-     * Returns the hint line of every allowed table, keyed by table name.
-     *
-     * @return string[] Hint per table; tables with no hand written hint carry an empty string.
+     * @return string[] Hint per table.
      */
     public static function hints(): array {
-        $hints = [];
-        foreach (self::allowed_tables() as $table) {
-            $hints[$table] = self::HINTS[$table] ?? '';
-        }
-        return $hints;
+        return self::HINTS;
     }
 
     /**
-     * Returns the allowed tables and their hints as the block sent to the model.
+     * Returns the catalogued tables and their hints as the block sent to the model.
      *
      * @return string One line per table.
      */

@@ -33,7 +33,6 @@ final class result_mailer_test extends \advanced_testcase {
         parent::setUp();
         $this->resetAfterTest();
         $this->setAdminUser();
-        set_config('allowedtables', "role\nuser\n", 'local_aicharts');
         set_config('maxrowsmax', 500, 'local_aicharts');
         set_config('resultretention', 30, 'local_aicharts');
     }
@@ -69,8 +68,11 @@ final class result_mailer_test extends \advanced_testcase {
         $id = chart_repository::save((object) [
             'name' => 'Roles',
             'prompt' => 'roles',
-            'sqltext' => $sql,
-            'params' => '{}',
+            'queries' => [[
+                'label' => 'Roles',
+                'sqltext' => $sql,
+                'params' => '{}',
+            ]],
             'chartjson' => '{"type":"bar","labels":"shortname","series":["total"]}',
             'runmode' => 'daily',
             'runhour' => 4,
@@ -178,5 +180,45 @@ final class result_mailer_test extends \advanced_testcase {
 
         run_chart::run($chart, 'scheduled', 0);
         $this->assertCount(1, $sink->get_messages());
+    }
+
+    /**
+     * The scheduled email of a two-query chart carries the merged CSV and the PNG.
+     *
+     * @covers \local_aicharts\local\result_mailer::send_for_result
+     * @covers \local_aicharts\task\run_chart::run
+     */
+    public function test_two_query_chart_email_has_csv_and_image(): void {
+        global $CFG;
+
+        $this->preventResetByRollback();
+        $CFG->allowattachments = 1;
+        $recipient = $this->create_recipient();
+        $id = chart_repository::save((object) [
+            'name' => 'Roles',
+            'prompt' => 'roles',
+            'queries' => [
+                ['label' => 'One', 'sqltext' => 'SELECT shortname, 1 AS total FROM {role}', 'params' => '{}'],
+                ['label' => 'Two', 'sqltext' => 'SELECT shortname, 2 AS total FROM {role}', 'params' => '{}'],
+            ],
+            'chartjson' => '{"type":"bar","labelcolumn":"shortname","series":[{"column":"One"},{"column":"Two"}]}',
+            'runmode' => 'daily',
+            'runhour' => 4,
+            'maxrows' => 100,
+            'emailto' => (string) $recipient->id,
+            'emailwhen' => 'always',
+        ]);
+        $chart = chart_repository::get($id);
+
+        $sink = $this->redirectEmails();
+        $result = run_chart::run($chart, 'scheduled');
+        $emails = $sink->get_messages();
+
+        $this->assertSame('ok', $result->status);
+        $this->assertNotNull(result_store::get_image($result));
+        $this->assertCount(1, $emails);
+        $this->assertStringContainsString(result_store::get_file($result)->get_filename(), $emails[0]->body);
+        $rows = result_store::load_rows($result);
+        $this->assertSame(['shortname', 'One', 'Two'], array_keys(reset($rows)));
     }
 }

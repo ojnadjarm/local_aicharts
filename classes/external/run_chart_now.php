@@ -18,23 +18,26 @@ namespace local_aicharts\external;
 
 use core\context\system;
 use core\notification;
-use core\task\manager;
 use core_external\external_api;
 use core_external\external_function_parameters;
 use core_external\external_single_structure;
 use core_external\external_value;
+use core_php_time_limit;
 use local_aicharts\local\chart_repository;
 use local_aicharts\task\run_chart;
 use moodle_exception;
 
 /**
- * Queues a manual run of one scheduled chart.
+ * Runs one chart at once and stores the result.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class run_chart_now extends external_api {
+    /** @var int Seconds a run asked for from the browser may take. */
+    protected const TIME_LIMIT = 120;
+
     /**
      * Parameters of the function.
      *
@@ -47,10 +50,10 @@ class run_chart_now extends external_api {
     }
 
     /**
-     * Queues the ad hoc task that runs the chart, unless one is already waiting for cron.
+     * Runs the chart while the request is open, so the result is stored before the answer returns.
      *
      * @param int $chartid The chart to run.
-     * @return array Whether a new task was queued.
+     * @return array The stored run.
      */
     public static function execute(int $chartid): array {
         global $USER;
@@ -65,16 +68,25 @@ class run_chart_now extends external_api {
         if (!$chart) {
             throw new moodle_exception('chartnotfound', 'local_aicharts');
         }
-        if ($chart->runmode === 'live') {
-            throw new moodle_exception('runnownotscheduled', 'local_aicharts');
+        if (!$chart->enabled) {
+            notification::warning(get_string('runnowpaused', 'local_aicharts'));
+            return ['runid' => 0, 'status' => 'paused', 'numrows' => 0];
         }
 
-        $task = run_chart::instance((int) $chart->id, 'manual', (int) $USER->id);
-        $queued = manager::queue_adhoc_task($task, true) !== false;
+        core_php_time_limit::raise(self::TIME_LIMIT);
+        $result = run_chart::run($chart, 'manual', (int) $USER->id);
 
-        notification::success(get_string($queued ? 'runnowqueued' : 'runnowalreadyqueued', 'local_aicharts'));
+        if ($result->status === 'ok') {
+            notification::success(get_string('runnowdone', 'local_aicharts', (int) $result->numrows));
+        } else {
+            notification::error(get_string('runnowfailed', 'local_aicharts'));
+        }
 
-        return ['queued' => $queued];
+        return [
+            'runid' => (int) $result->id,
+            'status' => $result->status,
+            'numrows' => (int) $result->numrows,
+        ];
     }
 
     /**
@@ -84,7 +96,9 @@ class run_chart_now extends external_api {
      */
     public static function execute_returns(): external_single_structure {
         return new external_single_structure([
-            'queued' => new external_value(PARAM_BOOL, 'Whether a new run was queued.'),
+            'runid' => new external_value(PARAM_INT, 'The stored run, 0 when the chart is paused.'),
+            'status' => new external_value(PARAM_ALPHAEXT, 'ok, db_error or paused.'),
+            'numrows' => new external_value(PARAM_INT, 'How many rows the run returned.'),
         ]);
     }
 }

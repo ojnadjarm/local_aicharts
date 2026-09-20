@@ -22,19 +22,21 @@ use core\output\renderer_base;
 use core\output\templatable;
 use core\task\manager;
 use core\url;
-use core_text;
+use local_aicharts\local\point_store;
+use local_aicharts\local\query_runner;
 use local_aicharts\local\result_store;
 use local_aicharts\local\schedule;
+use moodle_exception;
 use stdClass;
 
 /**
- * The stored runs of one chart: the selected run and the table of every kept run.
+ * One chart: its current or selected result, the CSV of it and the table of every kept run.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class history implements renderable, templatable {
+class chart_page implements renderable, templatable {
     /** @var string Ad hoc task that runs a scheduled chart. */
     protected const RUN_TASK = '\\local_aicharts\\task\\run_chart';
 
@@ -69,34 +71,43 @@ class history implements renderable, templatable {
         $results = result_store::list_for_chart((int) $chart->id);
         $latest = $this->latest_ok($results);
         $selected = $this->selected ?? $latest;
-        $scheduled = $chart->runmode !== 'live';
+        $live = $chart->runmode === 'live';
+        $canview = has_capability('local/aicharts:view', system::instance());
+        $liverender = $live && $canview && $chart->enabled && !$this->selected;
         $names = $this->recipient_names();
 
         $context = [
-            'tabs' => dashboard::tabs($output, 'charts'),
             'id' => (int) $chart->id,
             'name' => $chart->name,
             'icon' => dashboard::icon($chart),
             'iconlabel' => dashboard::icon_label($chart),
-            'canmanage' => has_capability('local/aicharts:manage', system::instance()),
-            'scheduled' => $scheduled,
+            'live' => $live,
+            'scheduled' => !$live,
+            'paused' => !$chart->enabled,
             'queued' => $this->is_queued(),
             'hasresults' => (bool) $results,
             'backurl' => (new url('/local/aicharts/index.php'))->out(false),
             'refreshurl' => $this->page_url()->out(false),
             'cronurl' => (new url('/admin/tool/task/scheduledtasks.php'))->out(false),
             'runskept' => get_string('runskept', 'local_aicharts', $this->retention()),
-            'rows' => $this->export_rows($results, $selected, (bool) $names),
+            'canmanage' => has_capability('local/aicharts:manage', system::instance()),
+            'rows' => $this->export_rows($results, $selected, (bool) $names, $liverender),
             'showemailed' => (bool) $names,
-        ] + dashboard::export_cron_state([$chart]);
+        ] + dashboard::run_again($results ? 'runagain' : 'runnow')
+          + dashboard::export_cron_state([$chart])
+          + dashboard::export_trend(
+              $chart,
+              point_store::timepoints((int) $chart->id),
+              point_store::retention($chart)
+          );
 
-        if ($scheduled) {
-            $mode = core_text::strtolower(schedule::label($chart->runmode));
+        if ($live) {
+            $context['livesummary'] = get_string('livesummary', 'local_aicharts');
+        } else {
             $context['schedulelabel'] = get_string('scheduledmodeat', 'local_aicharts', (object) [
-                'mode' => $mode,
+                'schedule' => schedule::describe($chart),
                 'hour' => sprintf('%02d:00', (int) $chart->runhour),
             ]);
-            $context['paused'] = !$chart->enabled;
         }
 
         if ($names) {
@@ -106,11 +117,75 @@ class history implements renderable, templatable {
             ]);
         }
 
-        if ($selected) {
+        if ($liverender) {
+            $context += $this->export_live($output);
+        } else if ($selected) {
             $context += $this->export_selected($output, $selected, $latest);
         }
 
         return $context;
+    }
+
+    /**
+     * Run a live chart and export the card showing its current result.
+     *
+     * @param renderer_base $output The renderer.
+     * @return array The card part of the page context.
+     */
+    protected function export_live(renderer_base $output): array {
+        $chart = $this->chart;
+        $card = [
+            'hasselected' => true,
+            'runof' => get_string('runof', 'local_aicharts', userdate(time())),
+        ];
+
+        $result = query_runner::run_all($chart->queries ?? [], (int) $chart->maxrows);
+        if ($result->has_error()) {
+            return $card + ['failed' => true, 'errormessage' => $result->errormessage];
+        }
+
+        $body = dashboard::render_rows($output, $chart, $result->rows, $result->rowcount, $result->truncated, true);
+        if (!empty($body['hasresult'])) {
+            $body['runmeta'] = get_string('runmeta', 'local_aicharts', (object) [
+                'rows' => $body['rowsline'],
+                'ms' => $result->durationms,
+                'trigger' => get_string('ranjustnow', 'local_aicharts'),
+            ]);
+            $body['csvurl'] = self::stream_url($chart)->out(false);
+        }
+
+        return $card + $body;
+    }
+
+    /**
+     * The URL streaming the current result of a live chart as CSV.
+     *
+     * @param stdClass $chart The chart record.
+     * @return url
+     */
+    public static function stream_url(stdClass $chart): url {
+        return new url('/local/aicharts/view.php', [
+            'id' => (int) $chart->id,
+            'download' => 'csv',
+            'sesskey' => sesskey(),
+        ]);
+    }
+
+    /**
+     * Run a chart and send its rows as a CSV download; nothing is stored.
+     *
+     * @param stdClass $chart The chart record.
+     * @return void
+     */
+    public static function stream_csv(stdClass $chart): void {
+        $result = query_runner::run_all($chart->queries ?? [], (int) $chart->maxrows);
+        if ($result->has_error()) {
+            throw new moodle_exception('chartfailed', 'local_aicharts', '', null, $result->errormessage);
+        }
+
+        $rows = $result->rows;
+        $columns = $rows ? array_keys((array) reset($rows)) : [];
+        \core\dataformat::download_data('chart-' . (int) $chart->id . '-' . date('Ymd-His'), 'csv', $columns, $rows);
     }
 
     /**
@@ -140,7 +215,8 @@ class history implements renderable, templatable {
             $this->chart,
             result_store::load_rows($selected),
             (int) $selected->numrows,
-            (bool) $selected->truncated
+            (bool) $selected->truncated,
+            true
         );
         if (!empty($body['hasresult'])) {
             $body['runmeta'] = get_string('runmeta', 'local_aicharts', (object) [
@@ -148,6 +224,10 @@ class history implements renderable, templatable {
                 'ms' => (int) $selected->durationms,
                 'trigger' => $this->trigger_label($selected),
             ]);
+            $url = result_store::download_url($selected);
+            if ($url) {
+                $body['csvurl'] = $url->out(false);
+            }
         }
 
         return $card + $body;
@@ -157,15 +237,17 @@ class history implements renderable, templatable {
      * Export one row of the runs table.
      *
      * @param stdClass[] $results Every stored run, newest first.
-     * @param stdClass|null $selected The run the card shows.
+     * @param stdClass|null $selected The newest successful run, or the run the card shows.
      * @param bool $showemailed Whether the emailed column is rendered.
+     * @param bool $liverender Whether the card shows a live render instead of a stored run.
      * @return array The rows of the runs table.
      */
-    protected function export_rows(array $results, ?stdClass $selected, bool $showemailed): array {
+    protected function export_rows(array $results, ?stdClass $selected, bool $showemailed, bool $liverender): array {
         $rows = [];
         foreach ($results as $result) {
             $ok = $result->status === 'ok';
             $url = result_store::download_url($result);
+            $newest = $selected && $selected->id == $result->id;
             $rows[] = [
                 'date' => userdate($result->timecreated),
                 'trigger' => $this->trigger_label($result),
@@ -176,7 +258,8 @@ class history implements renderable, templatable {
                 'durationms' => (string) (int) $result->durationms,
                 'downloadurl' => $url ? $url->out(false) : '',
                 'viewurl' => $ok ? $this->page_url((int) $result->id)->out(false) : '',
-                'current' => $selected && $selected->id == $result->id,
+                'current' => $newest && !$liverender,
+                'latest' => $newest && $liverender,
                 'showemailed' => $showemailed,
                 'emailed' => (bool) $result->emailed,
             ];
@@ -277,6 +360,6 @@ class history implements renderable, templatable {
             $params['resultid'] = $resultid;
         }
 
-        return new url('/local/aicharts/history.php', $params);
+        return new url('/local/aicharts/view.php', $params);
     }
 }

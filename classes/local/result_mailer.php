@@ -109,7 +109,7 @@ class result_mailer {
         $subject = self::subject($chart, $result);
         $html = $output->render_from_template('local_aicharts/email_result', $body->export_for_template($output));
         $text = $body->plain_text();
-        $url = new moodle_url('/local/aicharts/history.php', ['id' => $chart->id, 'resultid' => $result->id]);
+        $url = new moodle_url('/local/aicharts/view.php', ['id' => $chart->id, 'resultid' => $result->id]);
 
         $sent = 0;
         foreach ($recipients as $user) {

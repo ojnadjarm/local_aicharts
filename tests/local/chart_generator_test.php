@@ -18,6 +18,7 @@ namespace local_aicharts\local;
 
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Response;
 use local_aicharts\llm\stub_client;
 
 /**
@@ -34,7 +35,6 @@ final class chart_generator_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->setAdminUser();
         set_config('clienttype', 'stub', 'local_aicharts');
-        set_config('allowedtables', "user\ncourse\nenrol\nuser_enrolments\n", 'local_aicharts');
         set_config('maxrowsmax', 500, 'local_aicharts');
         set_config('querytimeout', 20, 'local_aicharts');
         stub_client::reset_call_count();
@@ -50,7 +50,7 @@ final class chart_generator_test extends \advanced_testcase {
     protected function generate(string $prompt): generation_result {
         global $USER;
 
-        return chart_generator::generate($prompt, '', '', '', 100, (int) $USER->id);
+        return chart_generator::generate($prompt, '', 100, (int) $USER->id);
     }
 
     /**
@@ -114,19 +114,17 @@ final class chart_generator_test extends \advanced_testcase {
     }
 
     /**
-     * A query outside the allowed tables is retried once, then fails validation with both attempts logged.
+     * A query the validator keeps refusing is retried once, then fails with both attempts logged.
      *
      * @covers \local_aicharts\local\chart_generator::generate
      */
     public function test_invalid_sql_is_validation_failed(): void {
         global $DB;
 
-        set_config('allowedtables', "user\n", 'local_aicharts');
-
-        $result = $this->generate('users per course');
+        $result = $this->generate('limit users per course');
 
         $this->assertSame('validation_failed', $result->status);
-        $this->assertStringContainsString('course', $result->errormessage);
+        $this->assertStringContainsString('LIMIT', $result->errormessage);
         $this->assertSame([], $result->rows);
         $this->assertSame(2, stub_client::get_call_count());
         $runs = array_values($DB->get_records('local_aicharts_run', [], 'id'));
@@ -155,8 +153,8 @@ final class chart_generator_test extends \advanced_testcase {
         $runs = array_values($DB->get_records('local_aicharts_run', [], 'id'));
         $this->assertCount(2, $runs);
         $this->assertSame('validation_failed', $runs[0]->status);
-        $this->assertStringContainsString('sessions', $runs[0]->errormessage);
-        $this->assertStringContainsString('{sessions}', $runs[0]->sqltext);
+        $this->assertStringContainsString('mdl_user', $runs[0]->errormessage);
+        $this->assertStringContainsString('mdl_user', $runs[0]->sqltext);
         $this->assertSame('ok', $runs[1]->status);
         $this->assertSame($result->sql, $runs[1]->sqltext);
     }
@@ -265,5 +263,91 @@ final class chart_generator_test extends \advanced_testcase {
         $this->assertNull($runs[1]->sqltext);
         $this->assertEquals($USER->id, $runs[1]->userid);
         $this->assertGreaterThan(0, $runs[1]->timecreated);
+    }
+
+    /**
+     * Point the generator at a mocked provider answering the given texts in turn.
+     *
+     * @param string ...$contents Answer texts the provider returns.
+     */
+    protected function mock_provider_answers(string ...$contents): void {
+        set_config('clienttype', 'openai', 'local_aicharts');
+        set_config('baseurl', 'https://llm.example.com/v1', 'local_aicharts');
+        set_config('apikey', 'sk-test-secret-key', 'local_aicharts');
+        set_config('model', 'test-model', 'local_aicharts');
+        ['mock' => $mock] = $this->get_mocked_http_client();
+        foreach ($contents as $content) {
+            $mock->append(new Response(200, [], json_encode([
+                'choices' => [['message' => ['role' => 'assistant', 'content' => $content]]],
+            ])));
+        }
+    }
+
+    /**
+     * A provider answer without a name is a chart named after its title.
+     *
+     * @covers \local_aicharts\local\chart_generator::generate
+     */
+    public function test_answer_without_name_is_a_chart(): void {
+        global $DB;
+
+        $this->mock_provider_answers(file_get_contents(__DIR__ . '/../fixtures/provider_answers/name_omitted.json'));
+
+        $result = $this->generate('users per course');
+
+        $this->assertSame('chart', $result->status);
+        $this->assertSame('Users per course', $result->name);
+        $this->assertSame('ok', $DB->get_field('local_aicharts_run', 'status', []));
+    }
+
+    /**
+     * An answer that cannot be read is logged with its text after the reason.
+     *
+     * @covers \local_aicharts\local\chart_generator::generate
+     */
+    public function test_invalid_answer_is_logged_with_its_text(): void {
+        global $DB;
+
+        $content = '{"status":"chart","name":"Users per course","chart":{"type":"bar"}}';
+        $this->mock_provider_answers($content, $content);
+
+        $result = $this->generate('users per course');
+
+        $this->assertSame('invalid_json', $result->status);
+        $this->assertStringNotContainsString($content, $result->errormessage);
+        $runs = $DB->get_records('local_aicharts_run', ['status' => 'invalid_json']);
+        $this->assertCount(2, $runs);
+        $run = reset($runs);
+        $this->assertStringContainsString('the query is missing', $run->errormessage);
+        $this->assertStringContainsString($content, $run->errormessage);
+    }
+
+    /**
+     * A chart-only request logs one attempt with the hint and no query, and a refusal is logged too.
+     *
+     * @covers \local_aicharts\local\chart_generator::generate_chart
+     */
+    public function test_generate_chart_logs_without_sql(): void {
+        global $DB, $USER;
+
+        $rows = [['coursename' => 'Maths', 'total' => 4]];
+        $result = chart_generator::generate_chart(['coursename', 'total'], $rows, 'stacked bars', 'oneshot', (int) $USER->id);
+
+        $this->assertSame('chart', $result->status);
+        $this->assertSame('Users per course', $result->name);
+        $spec = chart_spec::from_json($result->chartjson);
+        $this->assertSame('bar', $spec->type);
+        $this->assertSame('coursename', $spec->labelcolumn);
+        $this->assertSame([], $result->rows);
+        $this->assertSame(1, stub_client::get_call_count());
+        $run = $DB->get_record('local_aicharts_run', [], '*', MUST_EXIST);
+        $this->assertSame('ok', $run->status);
+        $this->assertSame('stacked bars', $run->prompt);
+        $this->assertNull($run->sqltext);
+
+        $result = chart_generator::generate_chart(['coursename', 'total'], $rows, 'tell me a joke', 'oneshot', (int) $USER->id);
+        $this->assertSame('refused', $result->status);
+        $this->assertSame(2, stub_client::get_call_count());
+        $this->assertSame(1, $DB->count_records('local_aicharts_run', ['status' => 'refused']));
     }
 }

@@ -26,46 +26,49 @@ use stdClass;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class prompt_builder {
+    /** @var array Schema the chart object must match. */
+    public const CHART_SCHEMA = [
+        'type' => 'object',
+        'additionalProperties' => false,
+        'required' => ['type', 'title', 'labelcolumn', 'series'],
+        'properties' => [
+            'type' => ['type' => 'string', 'enum' => ['bar', 'line', 'pie', 'table']],
+            'title' => ['type' => 'string'],
+            'labelcolumn' => ['type' => 'string'],
+            'labelformat' => ['type' => 'string', 'enum' => ['text', 'date', 'month']],
+            'series' => [
+                'type' => 'array',
+                'items' => [
+                    'type' => 'object',
+                    'additionalProperties' => false,
+                    'required' => ['column', 'label'],
+                    'properties' => [
+                        'column' => ['type' => 'string'],
+                        'label' => ['type' => 'string'],
+                    ],
+                ],
+            ],
+            'xlabel' => ['type' => 'string'],
+            'ylabel' => ['type' => 'string'],
+            'horizontal' => ['type' => 'boolean'],
+            'stacked' => ['type' => 'boolean'],
+            'doughnut' => ['type' => 'boolean'],
+            'smooth' => ['type' => 'boolean'],
+        ],
+    ];
+
     /** @var array Schema every answer must match. */
     public const RESPONSE_SCHEMA = [
         'type' => 'object',
         'additionalProperties' => false,
-        'required' => ['status'],
+        'required' => ['status', 'name', 'sql', 'params', 'chart', 'notes'],
         'properties' => [
             'status' => ['type' => 'string', 'enum' => ['chart', 'refused']],
-            'name' => ['type' => 'string'],
-            'sql' => ['type' => 'string'],
-            'params' => ['type' => 'object'],
-            'chart' => [
-                'type' => 'object',
-                'additionalProperties' => false,
-                'required' => ['type', 'title', 'labelcolumn', 'series'],
-                'properties' => [
-                    'type' => ['type' => 'string', 'enum' => ['bar', 'line', 'pie', 'table']],
-                    'title' => ['type' => 'string'],
-                    'labelcolumn' => ['type' => 'string'],
-                    'labelformat' => ['type' => 'string', 'enum' => ['text', 'date', 'month']],
-                    'series' => [
-                        'type' => 'array',
-                        'items' => [
-                            'type' => 'object',
-                            'additionalProperties' => false,
-                            'required' => ['column', 'label'],
-                            'properties' => [
-                                'column' => ['type' => 'string'],
-                                'label' => ['type' => 'string'],
-                            ],
-                        ],
-                    ],
-                    'xlabel' => ['type' => 'string'],
-                    'ylabel' => ['type' => 'string'],
-                    'horizontal' => ['type' => 'boolean'],
-                    'stacked' => ['type' => 'boolean'],
-                    'doughnut' => ['type' => 'boolean'],
-                    'smooth' => ['type' => 'boolean'],
-                ],
-            ],
-            'notes' => ['type' => 'string'],
+            'name' => ['type' => ['string', 'null']],
+            'sql' => ['type' => ['string', 'null']],
+            'params' => ['type' => ['object', 'null']],
+            'chart' => ['type' => ['object', 'null']] + self::CHART_SCHEMA,
+            'notes' => ['type' => ['string', 'null']],
         ],
     ];
 
@@ -82,38 +85,54 @@ class prompt_builder {
      * Returns the full message list: instructions, example pairs, then the request.
      *
      * @param string $prompt What the user asked for.
-     * @param string $schemahint Tables or columns the user pointed at.
-     * @param string $charthint How the user wants the result drawn.
-     * @param string $sqlhint Filters or joins the user wants applied.
+     * @param string $sqlhint A starting query the model may reuse or improve.
      * @return array List of ['role' => string, 'content' => string].
      */
-    public static function build_messages(
-        string $prompt,
-        string $schemahint = '',
-        string $charthint = '',
-        string $sqlhint = ''
-    ): array {
+    public static function build_messages(string $prompt, string $sqlhint = ''): array {
         $messages = [['role' => 'system', 'content' => self::system_prompt()]];
 
         foreach (chart_repository::find_examples($prompt) as $example) {
-            $messages[] = [
-                'role' => 'user',
-                'content' => self::request_block(
-                    $example->prompt,
-                    $example->schemahint ?? '',
-                    $example->charthint ?? '',
-                    $example->sqlhint ?? ''
-                ),
-            ];
+            $messages[] = ['role' => 'user', 'content' => self::request_block($example->prompt, '')];
             $messages[] = ['role' => 'assistant', 'content' => self::example_answer($example)];
         }
 
-        $messages[] = [
-            'role' => 'user',
-            'content' => self::request_block($prompt, $schemahint, $charthint, $sqlhint),
-        ];
+        $messages[] = ['role' => 'user', 'content' => self::request_block($prompt, $sqlhint)];
 
         return $messages;
+    }
+
+    /**
+     * Returns the messages asking how to draw the known columns of a result.
+     *
+     * @param string[] $columns The result columns, the label column first.
+     * @param array $samplerows A few result rows.
+     * @param string $charthint How the user wants the result drawn.
+     * @param string $kind oneshot or trend.
+     * @return array List of ['role' => string, 'content' => string].
+     */
+    public static function chart_messages(array $columns, array $samplerows, string $charthint, string $kind): array {
+        $system = "You describe how to draw the columns of a query result on a Moodle site.\n" .
+            "Return exactly one JSON object matching this schema, and nothing else: no prose, no Markdown fence.\n" .
+            json_encode(self::CHART_SCHEMA, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n" .
+            self::chart_section() . "\n" .
+            "- labelcolumn and every series column must be one of the columns listed in the request.\n" .
+            ($kind === 'trend'
+                ? "- This is a trend chart: labelcolumn is \"runtime\", labelformat is \"text\" and every other column"
+                    . " is a series.\n"
+                : '') .
+            "- If the request is not about how to draw these columns, answer exactly {\"status\":\"refused\"}.";
+
+        $user = 'Columns: ' . implode(', ', $columns) . "\n" .
+            'Sample rows: ' . json_encode(array_values($samplerows), JSON_UNESCAPED_SLASHES);
+        $charthint = trim($charthint);
+        if ($charthint !== '') {
+            $user .= "\nHint: " . $charthint;
+        }
+
+        return [
+            ['role' => 'system', 'content' => $system],
+            ['role' => 'user', 'content' => $user],
+        ];
     }
 
     /**
@@ -148,7 +167,8 @@ class prompt_builder {
     protected static function role_section(): string {
         return "You turn a request into a chart or query definition for a Moodle database.\n" .
             "You only produce chart or query definitions for a Moodle database. If the request is not a request " .
-            "for a chart, list or report from Moodle data, answer exactly {\"status\":\"refused\"}.\n" .
+            "for a chart, list or report from Moodle data, answer exactly {\"status\":\"refused\",\"name\":null," .
+            "\"sql\":null,\"params\":null,\"chart\":null,\"notes\":\"one sentence why\"}.\n" .
             "Answer with chart.type = \"table\" when the user asks for a list or report of rows, or when the result " .
             "is not chartable (more than one text column, no numeric series).";
     }
@@ -160,7 +180,8 @@ class prompt_builder {
      */
     protected static function json_section(): string {
         return "Return exactly one JSON object matching this schema, and nothing else: no prose, no Markdown fence, " .
-            "no explanation.\n" . json_encode(self::RESPONSE_SCHEMA, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            "no explanation. When status is chart, name, sql and chart must be filled.\n" .
+            json_encode(self::RESPONSE_SCHEMA, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 
     /**
@@ -172,12 +193,13 @@ class prompt_builder {
     protected static function sql_section(string $dbfamily): string {
         return "SQL rules:\n" .
             "- One SELECT statement. No semicolon, no comments, no DDL and no DML.\n" .
-            "- Write every table as a {tablename} placeholder and use only the allowed tables below.\n" .
+            "- Write every table as a {tablename} placeholder. Any Moodle table may be read; the ones below are\n" .
+            "  described for you.\n" .
             "- Pass values as named parameters :name and put each value in \"params\".\n" .
             "- Never write a colon inside a quoted string: ':00' is read as a parameter. Pass such a value " .
             "as a parameter instead.\n" .
             "- Never write LIMIT, OFFSET or FETCH; the server appends its own row limit.\n" .
-            "- UNION and subqueries are fine as long as every table is allowed.\n" .
+            "- UNION and subqueries are fine.\n" .
             "- The database family is " . $dbfamily . "; use only functions it supports.\n" .
             "- All timestamps are unix epoch integers. Bucket them portably, for example " .
             "FLOOR(col / 86400) * 86400 for a day.\n" .
@@ -185,12 +207,12 @@ class prompt_builder {
     }
 
     /**
-     * The allowed tables and their relations.
+     * The catalogued tables and their relations.
      *
      * @return string
      */
     protected static function tables_section(): string {
-        return "Allowed tables and their key columns:\n" . schema_catalogue::hint_block();
+        return "Tables and their key columns:\n" . schema_catalogue::hint_block();
     }
 
     /**
@@ -211,23 +233,13 @@ class prompt_builder {
      * Wraps a request and its hints in the delimiters the model is trained on.
      *
      * @param string $prompt What is asked for.
-     * @param string $schemahint Tables or columns the user pointed at.
-     * @param string $charthint How the user wants the result drawn.
-     * @param string $sqlhint Filters or joins the user wants applied.
+     * @param string $sqlhint A starting query the model may reuse or improve.
      * @return string
      */
-    protected static function request_block(
-        string $prompt,
-        string $schemahint,
-        string $charthint,
-        string $sqlhint
-    ): string {
+    protected static function request_block(string $prompt, string $sqlhint): string {
         $lines = ['Request: ' . trim($prompt)];
-        foreach (['Data hint' => $schemahint, 'Chart hint' => $charthint, 'Query hint' => $sqlhint] as $label => $hint) {
-            $hint = trim((string) $hint);
-            if ($hint !== '') {
-                $lines[] = $label . ': ' . $hint;
-            }
+        if (trim($sqlhint) !== '') {
+            $lines[] = 'Query hint: ' . trim($sqlhint);
         }
         return "<request>\n" . implode("\n", $lines) . "\n</request>";
     }
@@ -239,13 +251,14 @@ class prompt_builder {
      * @return string JSON answer.
      */
     protected static function example_answer(stdClass $example): string {
-        $params = json_decode((string) $example->params, true);
+        $query = $example->queries[0];
+        $params = json_decode((string) $query->params, true);
         $chart = json_decode((string) $example->chartjson, true);
 
         return json_encode([
             'status' => 'chart',
             'name' => $example->name,
-            'sql' => $example->sqltext,
+            'sql' => $query->sqltext,
             'params' => (object) (is_array($params) ? $params : []),
             'chart' => is_array($chart) ? $chart : [],
         ], JSON_UNESCAPED_SLASHES);

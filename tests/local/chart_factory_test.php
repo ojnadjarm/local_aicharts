@@ -223,4 +223,62 @@ final class chart_factory_test extends \advanced_testcase {
             $this->assertStringContainsString($needle, $e->getMessage());
         }
     }
+
+    /**
+     * Merged rows of several queries feed series named after the query labels.
+     *
+     * @covers \local_aicharts\local\chart_factory::create
+     */
+    public function test_series_by_query_label(): void {
+        $spec = chart_spec::from_array([
+            'type' => 'bar',
+            'labelcolumn' => 'coursename',
+            'series' => [
+                ['column' => 'This year', 'label' => 'This year'],
+                ['column' => 'Last year', 'label' => 'Last year'],
+            ],
+        ]);
+        $rows = [
+            (object) ['coursename' => 'Maths', 'This year' => '4', 'Last year' => '2'],
+            (object) ['coursename' => 'History', 'This year' => '7', 'Last year' => null],
+        ];
+
+        $chart = chart_factory::create($spec, $rows);
+
+        $series = $chart->get_series();
+        $this->assertSame(['Maths', 'History'], $chart->get_labels());
+        $this->assertSame('This year', $series[0]->get_label());
+        $this->assertSame([4.0, 7.0], $series[0]->get_values());
+        $this->assertSame('Last year', $series[1]->get_label());
+        $this->assertSame([2.0, null], $series[1]->get_values());
+    }
+
+    /**
+     * The rows of a point store draw a line over run time, one series per label.
+     *
+     * @covers \local_aicharts\local\chart_factory::create
+     */
+    public function test_line_from_stored_points(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $this->setTimezone('UTC');
+        $id = chart_repository::save((object) [
+            'name' => 'Trend',
+            'prompt' => 'trend',
+            'queries' => [['label' => 'Active', 'sqltext' => 'SELECT 1', 'params' => '{}']],
+            'chartjson' => '{"type":"line","labelcolumn":"runtime","series":[{"column":"Active"},{"column":"New"}]}',
+            'kind' => 'trend',
+        ]);
+        $chart = chart_repository::get($id);
+        point_store::append($chart, ['Active' => 10, 'New' => 2], 1700000000, null);
+        point_store::append($chart, ['Active' => 12], 1700086400, null);
+
+        $rows = point_store::format_rows(point_store::rows($chart->id));
+        $line = chart_factory::create(chart_spec::from_json($chart->chartjson), $rows);
+
+        $this->assertInstanceOf(\core\chart_line::class, $line);
+        $this->assertSame(['14/11/23, 22:13', '15/11/23, 22:13'], $line->get_labels());
+        $this->assertSame([10.0, 12.0], $line->get_series()[0]->get_values());
+        $this->assertSame([2.0, null], $line->get_series()[1]->get_values());
+    }
 }

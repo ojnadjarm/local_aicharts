@@ -31,16 +31,6 @@ final class default_charts_test extends \advanced_testcase {
         parent::setUp();
         $this->resetAfterTest();
         $DB->delete_records('local_aicharts_chart');
-        set_config('allowedtables', implode("\n", [
-            'user',
-            'course',
-            'course_categories',
-            'enrol',
-            'user_enrolments',
-            'role',
-            'role_assignments',
-            'course_completions',
-        ]), 'local_aicharts');
         set_config('maxrowsdefault', 500, 'local_aicharts');
         set_config('maxrowsmax', 5000, 'local_aicharts');
         set_config('querytimeout', 20, 'local_aicharts');
@@ -67,6 +57,48 @@ final class default_charts_test extends \advanced_testcase {
         $this->assertCount(1, $tables);
         $this->assertSame(500, (int) reset($charts)->maxrows);
         $this->assertSame(1, (int) reset($charts)->isdefault);
+    }
+
+    /**
+     * Each seeded chart gets one query named after the chart.
+     *
+     * @covers \local_aicharts\local\default_charts::seed
+     */
+    public function test_seed_creates_one_query_per_chart(): void {
+        global $DB;
+
+        default_charts::seed();
+
+        foreach ($DB->get_records('local_aicharts_chart') as $chart) {
+            $queries = $DB->get_records('local_aicharts_query', ['chartid' => $chart->id]);
+            $this->assertCount(1, $queries);
+            $query = reset($queries);
+            $definition = default_charts::CHARTS[$chart->idnumber];
+            $this->assertSame($chart->name, $query->label);
+            $this->assertSame($definition['sql'], $query->sqltext);
+            $this->assertSame(array_keys($definition['params']), array_keys(json_decode($query->params, true)));
+            $this->assertSame($definition['kind'] ?? 'oneshot', $chart->kind);
+            $this->assertSame($definition['runmode'] ?? 'live', $chart->runmode);
+        }
+    }
+
+    /**
+     * The trend default runs daily and its since parameter is set from the seed time.
+     *
+     * @covers \local_aicharts\local\default_charts::seed
+     * @covers \local_aicharts\local\default_charts::params
+     */
+    public function test_trend_default_since_parameter(): void {
+        global $DB;
+
+        default_charts::seed();
+        $chart = $DB->get_record('local_aicharts_chart', ['idnumber' => 'activeuserstrend']);
+        $query = $DB->get_record('local_aicharts_query', ['chartid' => $chart->id]);
+        $params = json_decode($query->params, true);
+
+        $this->assertSame('trend', $chart->kind);
+        $this->assertSame('daily', $chart->runmode);
+        $this->assertEqualsWithDelta(time() - 30 * DAYSECS, $params['since'], 5);
     }
 
     /**
@@ -109,14 +141,26 @@ final class default_charts_test extends \advanced_testcase {
             'timecompleted' => time(),
         ]);
 
+        default_charts::seed();
         foreach (default_charts::CHARTS as $idnumber => $definition) {
             $spec = chart_spec::from_json(json_encode($definition['chart']));
             if ($spec->is_table()) {
                 continue;
             }
 
-            $result = query_runner::run($definition['sql'], $definition['params'], 500);
-            $chart = chart_factory::create($spec, $result->rows);
+            if (($definition['kind'] ?? 'oneshot') === 'trend') {
+                $record = $DB->get_record('local_aicharts_chart', ['idnumber' => $idnumber]);
+                $values = query_runner::run_points([(object) [
+                    'label' => $definition['name'],
+                    'sqltext' => $definition['sql'],
+                    'params' => $definition['params'],
+                ]], 500);
+                point_store::append($record, $values->rows[0], time(), null);
+                $rows = point_store::format_rows(point_store::rows($record->id));
+            } else {
+                $rows = query_runner::run($definition['sql'], $definition['params'], 500)->rows;
+            }
+            $chart = chart_factory::create($spec, $rows);
 
             foreach ($chart->get_series() as $series) {
                 $this->assertGreaterThan(0, $series->get_count(), $idnumber . ' has an empty series');

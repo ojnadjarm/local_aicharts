@@ -24,8 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026090807;
+$plugin->version   = 2026092000;
 $plugin->requires  = 2025100600; // Moodle 5.1.
 $plugin->component = 'local_aicharts';
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release   = '1.0.0';
+$plugin->release   = '1.2.0';

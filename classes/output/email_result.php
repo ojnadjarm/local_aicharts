@@ -159,7 +159,7 @@ class email_result implements renderable, templatable {
      * @return moodle_url
      */
     protected function history_url(): moodle_url {
-        return new moodle_url('/local/aicharts/history.php', [
+        return new moodle_url('/local/aicharts/view.php', [
             'id' => $this->chart->id,
             'resultid' => $this->result->id,
         ]);

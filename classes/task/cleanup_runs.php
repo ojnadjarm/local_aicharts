@@ -16,8 +16,10 @@
 
 namespace local_aicharts\task;
 
+use local_aicharts\local\point_store;
+
 /**
- * Deletes generation log entries older than the configured retention.
+ * Deletes generation log entries older than the configured retention and prunes trend points.
  *
  * @package    local_aicharts
  * @copyright  2026 Oscar Nadjar
@@ -34,10 +36,17 @@ class cleanup_runs extends \core\task\scheduled_task {
     }
 
     /**
-     * Deletes run rows older than the retention setting; a retention of zero keeps everything.
+     * Deletes run rows older than the retention setting (zero keeps everything) and prunes the
+     * points of every trend chart to its retention.
      */
     public function execute(): void {
         global $DB;
+
+        $charts = $DB->get_records('local_aicharts_chart', ['kind' => 'trend'], '', 'id, pointsretention');
+        foreach ($charts as $chart) {
+            point_store::prune($chart->id, point_store::retention($chart));
+        }
+        mtrace('Pruned the points of ' . count($charts) . ' trend charts.');
 
         $days = (int) get_config('local_aicharts', 'logretentiondays');
         if ($days <= 0) {

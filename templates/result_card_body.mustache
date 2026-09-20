@@ -21,12 +21,15 @@
 
     Context variables required for this template:
     * id - The chart id.
+    * canmanage - Whether the user may run the chart now.
     * paused - Whether the chart is paused.
-    * deferred - Whether the chart is loaded on request.
     * failed - Whether the run failed.
     * errormessage - Why the run failed.
     * norows - Whether the run returned no rows.
     * notrunyet - Whether a scheduled chart has no stored result.
+    * notloaded - Whether a live chart has no stored result and was not run on load.
+    * runagain - Whether the shown result can be run again and stored.
+    * runlabel - Label of that button: Run again, or Run now when nothing was ever stored.
     * queued - Whether a run of the chart waits for cron.
     * nextrunformatted - When the chart runs next.
     * refreshurl - Link reloading the dashboard.
@@ -35,8 +38,9 @@
     Example context (json):
     {
         "id": 1,
+        "canmanage": true,
         "paused": false,
-        "deferred": true,
+        "notloaded": true,
         "failed": false,
         "body": ""
     }
@@ -47,15 +51,12 @@
         <div>{{#str}}pausedstate, local_aicharts{{/str}}</div>
     </div>
 {{/paused}}
-{{#deferred}}
-    <div class="local-aicharts-statebox d-flex gap-2 mb-3" role="status">
+{{#notloaded}}
+    <div class="local-aicharts-statebox d-flex gap-2" role="status">
         <i class="icon fa fa-circle-info mt-1" aria-hidden="true"></i>
         <div>{{#str}}notloaded, local_aicharts{{/str}}</div>
     </div>
-    <button type="button" class="btn btn-secondary" data-action="loadchart" data-id="{{id}}">
-        {{#str}}loadchart, local_aicharts{{/str}}
-    </button>
-{{/deferred}}
+{{/notloaded}}
 {{#notrunyet}}
     <div class="local-aicharts-statebox d-flex gap-2" role="status">
         <i class="icon fa fa-clock mt-1" aria-hidden="true"></i>
@@ -70,6 +71,11 @@
             {{/queued}}
         </div>
     </div>
+    {{#canmanage}}
+        <button type="button" class="btn btn-secondary mt-auto align-self-start" data-action="runnow" data-id="{{id}}" {{#queued}}disabled{{/queued}}>
+            <i class="icon fa fa-play" aria-hidden="true"></i>{{#str}}runnow, local_aicharts{{/str}}
+        </button>
+    {{/canmanage}}
 {{/notrunyet}}
 {{#failed}}
     <div class="local-aicharts-statebox d-flex gap-2" role="status">
@@ -92,3 +98,10 @@
 {{#body}}
     <div class="local-aicharts-chart">{{{body}}}</div>
 {{/body}}
+{{#runagain}}
+    {{#canmanage}}
+        <button type="button" class="btn btn-secondary mt-auto align-self-start" data-action="runnow" data-id="{{id}}" {{#queued}}disabled{{/queued}}>
+            <i class="icon fa fa-play" aria-hidden="true"></i>{{runlabel}}
+        </button>
+    {{/canmanage}}
+{{/runagain}}

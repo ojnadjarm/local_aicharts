@@ -47,8 +47,11 @@ final class delete_chart_test extends \advanced_testcase {
         $id = chart_repository::save((object) [
             'name' => 'Roles',
             'prompt' => 'roles',
-            'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
-            'params' => '{}',
+            'queries' => [[
+                'label' => 'Roles',
+                'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
+                'params' => '{}',
+            ]],
             'chartjson' => '{"type":"bar","labels":"shortname","series":["total"]}',
             'runmode' => 'daily',
             'runhour' => 0,

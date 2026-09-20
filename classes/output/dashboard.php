@@ -22,7 +22,6 @@ use core\output\action_menu\link_secondary;
 use core\output\pix_icon;
 use core\output\renderable;
 use core\output\renderer_base;
-use core\output\tabobject;
 use core\output\templatable;
 use core\task\manager;
 use core\url;
@@ -30,6 +29,7 @@ use core_text;
 use local_aicharts\local\chart_factory;
 use local_aicharts\local\chart_repository;
 use local_aicharts\local\chart_spec;
+use local_aicharts\local\point_store;
 use local_aicharts\local\query_runner;
 use local_aicharts\local\result_store;
 use local_aicharts\local\schedule;
@@ -44,14 +44,11 @@ use stdClass;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class dashboard implements renderable, templatable {
-    /** @var int Live charts run when the page loads; the rest are loaded on request. */
+    /** @var int Live charts run when the page loads unless the site setting says otherwise. */
     public const LIVE_ON_LOAD = 6;
 
     /** @var int Seconds after which cron is reported as not running. */
     protected const CRON_STALE = 300;
-
-    /** @var int Items above which the name filter is shown. */
-    protected const FILTER_FROM = 6;
 
     /** @var string Ad hoc task that runs a scheduled chart. */
     protected const RUN_TASK = '\\local_aicharts\\task\\run_chart';
@@ -70,16 +67,21 @@ class dashboard implements renderable, templatable {
     /** @var bool Whether live charts are all left to be loaded on request. */
     protected bool $skiplive;
 
+    /** @var int The chart that was just saved, shown first so the person who saved it sees it. */
+    protected int $saved;
+
     /**
      * Constructor.
      *
      * @param string|null $view grid or list; null takes the user preference.
      * @param bool $skiplive Whether to defer every live chart instead of running it.
+     * @param int $saved The chart that was just saved, 0 for none.
      */
-    public function __construct(?string $view = null, bool $skiplive = false) {
+    public function __construct(?string $view = null, bool $skiplive = false, int $saved = 0) {
         $view = $view ?? get_user_preferences('local_aicharts_view', 'grid');
         $this->view = $view === 'list' ? 'list' : 'grid';
         $this->skiplive = $skiplive;
+        $this->saved = $saved;
     }
 
     /**
@@ -89,7 +91,7 @@ class dashboard implements renderable, templatable {
      * @return array The template context.
      */
     public function export_for_template(renderer_base $output): array {
-        $charts = chart_repository::list_all();
+        $charts = self::saved_first(chart_repository::list_all(), $this->saved);
         $canmanage = has_capability('local/aicharts:manage', system::instance());
 
         $queued = $charts ? $this->queued_chart_ids() : [];
@@ -100,28 +102,57 @@ class dashboard implements renderable, templatable {
                 $rows[] = $this->export_row($output, $chart, $canmanage, $queued);
             }
         } else {
+            $points = point_store::timepoints_for(array_keys(array_filter($charts, [schedule::class, 'is_trend'])));
             $live = 0;
+            $onload = self::live_on_load();
             foreach ($charts as $chart) {
-                $deferred = $this->skiplive || $live >= self::LIVE_ON_LOAD;
+                $deferred = $this->skiplive || $live >= $onload;
                 if ($chart->enabled && $chart->runmode === 'live') {
                     $live++;
                 }
-                $cards[] = $this->export_card($output, $chart, $canmanage, $deferred, $queued);
+                $cards[] = $this->export_card($output, $chart, $canmanage, $deferred, $queued, $points);
             }
         }
 
         return [
-            'tabs' => self::tabs($output, 'charts'),
             'listview' => $this->view === 'list',
             'canmanage' => $canmanage,
             'hascharts' => (bool) $charts,
-            'showfilter' => count($charts) > self::FILTER_FROM,
+            'addurl' => (new url('/local/aicharts/edit.php'))->out(false),
             'gridurl' => (new url('/local/aicharts/index.php', ['view' => 'grid']))->out(false),
             'listurl' => (new url('/local/aicharts/index.php', ['view' => 'list']))->out(false),
             'cronurl' => (new url('/admin/tool/task/scheduledtasks.php'))->out(false),
             'cards' => $cards,
             'rows' => $rows,
         ] + self::export_cron_state($charts);
+    }
+
+    /**
+     * How many live charts run while the page loads, 0 for none.
+     *
+     * The install and the upgrade both store the default, so false only happens on a site whose settings have
+     * never been applied; it keeps that site on LIVE_ON_LOAD rather than deferring every card.
+     *
+     * @return int
+     */
+    protected static function live_on_load(): int {
+        $setting = get_config('local_aicharts', 'liveonload');
+        return $setting === false ? self::LIVE_ON_LOAD : max(0, (int) $setting);
+    }
+
+    /**
+     * Move one chart to the front of the list, so a chart that was just saved is seen at once.
+     *
+     * @param stdClass[] $charts Charts keyed by id.
+     * @param int $first The chart to show first, 0 for none.
+     * @return stdClass[] Charts keyed by id.
+     */
+    protected static function saved_first(array $charts, int $first): array {
+        if (!$first || !isset($charts[$first])) {
+            return $charts;
+        }
+
+        return [$first => $charts[$first]] + $charts;
     }
 
     /**
@@ -132,6 +163,7 @@ class dashboard implements renderable, templatable {
      * @param bool $canmanage Whether the user may act on the chart.
      * @param bool $deferred Whether a live chart is left to be loaded on request.
      * @param array $queued Ids of the charts waiting for their queued run.
+     * @param int[] $points Timepoints of each trend chart, keyed by chart id.
      * @return array The card context.
      */
     protected function export_card(
@@ -139,7 +171,8 @@ class dashboard implements renderable, templatable {
         stdClass $chart,
         bool $canmanage,
         bool $deferred,
-        array $queued
+        array $queued,
+        array $points
     ): array {
         $live = $chart->runmode === 'live';
         $paused = !$chart->enabled;
@@ -151,46 +184,73 @@ class dashboard implements renderable, templatable {
             'dataname' => core_text::strtolower($chart->name),
             'icon' => self::icon($chart),
             'iconlabel' => self::icon_label($chart),
-            'menu' => $this->menu($output, $chart, $canmanage, isset($queued[(int) $chart->id])),
+            'menu' => $this->menu($output, $chart, $canmanage),
+            'viewurl' => self::view_url($chart)->out(false),
+            'canmanage' => $canmanage,
             'live' => $live,
             'paused' => $paused,
             'deferred' => $deferred,
+            'queued' => isset($queued[(int) $chart->id]),
+            'refreshurl' => (new url('/local/aicharts/index.php'))->out(false),
             'maxrows' => (int) $chart->maxrows,
-        ] + $this->export_recipients($chart);
+        ] + $this->export_recipients($chart) + self::export_trend($chart, $points[(int) $chart->id] ?? 0);
 
         if (!$live) {
-            $card += $this->export_schedule($chart, isset($queued[(int) $chart->id]));
+            $card += $this->export_schedule($chart);
+        } else if ($chart->lastrun) {
+            $card['lastrunformatted'] = get_string('lastrunat', 'local_aicharts', userdate((int) $chart->lastrun));
         }
 
-        if ($paused || $deferred) {
+        if ($paused) {
             return $card;
         }
 
-        return $card + ($live ? $this->run($output, $chart) : $this->stored($output, $chart));
+        return $card + ($live && !$deferred ? $this->run($output, $chart) : $this->stored($output, $chart));
     }
 
     /**
-     * Export the schedule of a chart: its mode, hour, history link and queued state.
+     * Export the schedule of a chart: its mode and hour.
      *
      * @param stdClass $chart The chart record.
-     * @param bool $queued Whether a run of this chart is waiting for cron.
      * @return array The scheduled part of the card context.
      */
-    protected function export_schedule(stdClass $chart, bool $queued): array {
-        $mode = core_text::strtolower(schedule::label($chart->runmode));
+    protected function export_schedule(stdClass $chart): array {
+        $describe = schedule::describe($chart);
         $hour = sprintf('%02d:00', (int) $chart->runhour);
 
         return [
             'scheduled' => true,
-            'runmodelabel' => get_string('scheduledmode', 'local_aicharts', $mode),
+            'runmodelabel' => get_string('scheduledmode', 'local_aicharts', $describe),
             'schedulelabel' => get_string('scheduledmodeat', 'local_aicharts', (object) [
-                'mode' => $mode,
+                'schedule' => $describe,
                 'hour' => $hour,
             ]),
             'runhourformatted' => $hour,
-            'queued' => $queued,
-            'historyurl' => (new url('/local/aicharts/history.php', ['id' => (int) $chart->id]))->out(false),
-            'refreshurl' => (new url('/local/aicharts/index.php'))->out(false),
+        ];
+    }
+
+    /**
+     * Export the trend marker of a chart and how many points it holds.
+     *
+     * @param stdClass $chart The chart record.
+     * @param int $points Timepoints the chart has stored.
+     * @param int|null $retention Timepoints the chart keeps, null to leave it out of the line.
+     * @return array The trend part of the card context.
+     */
+    public static function export_trend(stdClass $chart, int $points, ?int $retention = null): array {
+        if (!schedule::is_trend($chart)) {
+            return ['trend' => false];
+        }
+
+        $line = get_string('pointscount', 'local_aicharts', $points);
+        if ($retention !== null) {
+            $line .= ' · ' . get_string('pointskept', 'local_aicharts', $retention);
+        }
+
+        return [
+            'trend' => true,
+            'trendlabel' => get_string('trendmarker', 'local_aicharts'),
+            'pointsline' => $line,
         ];
     }
 
@@ -220,7 +280,7 @@ class dashboard implements renderable, templatable {
     }
 
     /**
-     * Export the stored result of a scheduled chart, or the reason it has none.
+     * Export the stored result of a chart, or the reason it has none.
      *
      * @param renderer_base $output The renderer.
      * @param stdClass $chart The chart record.
@@ -240,7 +300,11 @@ class dashboard implements renderable, templatable {
 
         if (!$ok) {
             if ($latest) {
-                return ['failed' => true, 'errormessage' => $latest->errormessage];
+                return ['failed' => true, 'errormessage' => $latest->errormessage] + self::run_again();
+            }
+
+            if ($chart->runmode === 'live') {
+                return ['notloaded' => true] + self::run_again('runnow');
             }
 
             return [
@@ -260,6 +324,7 @@ class dashboard implements renderable, templatable {
             (int) $ok->numrows,
             (bool) $ok->truncated
         );
+        $body += self::run_again();
         $body['lastrunformatted'] = get_string('lastrunat', 'local_aicharts', userdate($ok->timecreated));
         if ($latest->id != $ok->id) {
             $body['lastrunfailed'] = true;
@@ -270,29 +335,23 @@ class dashboard implements renderable, templatable {
     }
 
     /**
-     * Export the card body of one chart, running it unless it is paused.
+     * The button that runs the chart and stores the result, named for what the chart already holds.
      *
-     * @param renderer_base $output The renderer.
-     * @param stdClass $chart The chart record.
-     * @return array The context of the result_card_body template.
+     * @param string $key Lang string of the label.
+     * @return array The run-again part of the card context.
      */
-    public function export_card_body(renderer_base $output, stdClass $chart): array {
-        $body = [
-            'id' => (int) $chart->id,
-            'paused' => !$chart->enabled,
-            'deferred' => false,
-        ];
+    public static function run_again(string $key = 'runagain'): array {
+        return ['runagain' => true, 'runlabel' => get_string($key, 'local_aicharts')];
+    }
 
-        if (!$chart->enabled) {
-            return $body;
-        }
-
-        if ($chart->runmode !== 'live') {
-            $queued = $this->queued_chart_ids();
-            return $body + $this->export_schedule($chart, isset($queued[(int) $chart->id])) + $this->stored($output, $chart);
-        }
-
-        return $body + $this->run($output, $chart);
+    /**
+     * The page of one chart.
+     *
+     * @param stdClass $chart The chart record.
+     * @return url
+     */
+    public static function view_url(stdClass $chart): url {
+        return new url('/local/aicharts/view.php', ['id' => (int) $chart->id]);
     }
 
     /**
@@ -315,18 +374,20 @@ class dashboard implements renderable, templatable {
     /**
      * Run a chart and export its rendered result, or the reason it has none.
      *
+     * The render is not stored; the button lets the user ask for a run that is.
+     *
      * @param renderer_base $output The renderer.
      * @param stdClass $chart The chart record.
      * @return array The result part of the card context.
      */
     protected function run(renderer_base $output, stdClass $chart): array {
-        $params = json_decode($chart->params, true);
-        $result = query_runner::run($chart->sqltext, is_array($params) ? $params : [], (int) $chart->maxrows);
+        $again = self::run_again($chart->lastrun ? 'runagain' : 'runnow');
+        $result = query_runner::run_all($chart->queries ?? [], (int) $chart->maxrows);
         if ($result->has_error()) {
-            return ['failed' => true, 'errormessage' => $result->errormessage];
+            return ['failed' => true, 'errormessage' => $result->errormessage] + $again;
         }
 
-        return self::render_rows($output, $chart, $result->rows, $result->rowcount, $result->truncated);
+        return self::render_rows($output, $chart, $result->rows, $result->rowcount, $result->truncated) + $again;
     }
 
     /**
@@ -337,6 +398,7 @@ class dashboard implements renderable, templatable {
      * @param array $rows The result rows.
      * @param int $rowcount How many rows the run returned.
      * @param bool $truncated Whether the row limit cut the result.
+     * @param bool $withtable Whether the chart carries its data table and a table shows every row.
      * @return array The result part of the card context.
      */
     public static function render_rows(
@@ -344,7 +406,8 @@ class dashboard implements renderable, templatable {
         stdClass $chart,
         array $rows,
         int $rowcount,
-        bool $truncated
+        bool $truncated,
+        bool $withtable = false
     ): array {
         $key = $truncated ? 'rowcounttruncated' : 'rowcount';
         $rowsline = get_string($key, 'local_aicharts', (object) [
@@ -358,9 +421,10 @@ class dashboard implements renderable, templatable {
         try {
             $spec = chart_spec::from_json($chart->chartjson);
             if ($spec->is_table()) {
-                $body = $output->render(new result_table($rows));
+                $viewurl = $withtable ? '' : self::view_url($chart)->out(false);
+                $body = $output->render(new result_table($rows, 5, $viewurl));
             } else {
-                $body = $output->render(chart_factory::create($spec, $rows));
+                $body = $output->render_chart(chart_factory::create($spec, $rows), $withtable);
             }
         } catch (moodle_exception $e) {
             return ['failed' => true, 'errormessage' => $e->getMessage()];
@@ -374,28 +438,6 @@ class dashboard implements renderable, templatable {
     }
 
     /**
-     * The Charts / Settings tab strip shared by the plugin pages.
-     *
-     * @param renderer_base $output The renderer.
-     * @param string $active Key of the current tab.
-     * @return string The rendered tabs.
-     */
-    public static function tabs(renderer_base $output, string $active): string {
-        $tabs = [
-            new tabobject('charts', new url('/local/aicharts/index.php'), get_string('charts', 'local_aicharts')),
-        ];
-        if (has_capability('moodle/site:config', system::instance())) {
-            $tabs[] = new tabobject(
-                'settings',
-                new url('/admin/settings.php', ['section' => 'local_aicharts']),
-                get_string('settings')
-            );
-        }
-
-        return $output->tabtree($tabs, $active);
-    }
-
-    /**
      * Export one list-view row. Nothing is queried in list view.
      *
      * @param renderer_base $output The renderer.
@@ -406,7 +448,8 @@ class dashboard implements renderable, templatable {
      */
     protected function export_row(renderer_base $output, stdClass $chart, bool $canmanage, array $queued): array {
         $scheduled = $chart->runmode !== 'live';
-        $mode = get_string('runmode_' . $chart->runmode, 'local_aicharts');
+        $mode = schedule::describe($chart);
+        $mode = core_text::strtoupper(core_text::substr($mode, 0, 1)) . core_text::substr($mode, 1);
 
         return [
             'id' => (int) $chart->id,
@@ -414,18 +457,44 @@ class dashboard implements renderable, templatable {
             'dataname' => core_text::strtolower($chart->name),
             'icon' => self::icon($chart),
             'iconlabel' => self::icon_label($chart),
-            'menu' => $this->menu($output, $chart, $canmanage, isset($queued[(int) $chart->id])),
+            'menu' => $this->menu($output, $chart, $canmanage),
+            'viewurl' => self::view_url($chart)->out(false),
             'scheduled' => $scheduled,
-            'historyurl' => $scheduled
-                ? (new url('/local/aicharts/history.php', ['id' => (int) $chart->id]))->out(false)
-                : '',
+            'trend' => schedule::is_trend($chart),
+            'trendlabel' => get_string('trendmarker', 'local_aicharts'),
             'mode' => $chart->enabled
                 ? ($scheduled ? $mode . ' · ' . sprintf('%02d:00', (int) $chart->runhour) : $mode)
                 : get_string('paused', 'local_aicharts'),
             'lastrun' => $chart->lastrun ? userdate($chart->lastrun) : '—',
             'numrows' => isset($chart->lastrowcount) ? (string) $chart->lastrowcount : '—',
-            'state' => isset($queued[(int) $chart->id]) ? get_string('queued', 'local_aicharts') : '—',
+            'state' => $this->row_state($chart, isset($queued[(int) $chart->id])),
         ];
+    }
+
+    /**
+     * The State column of a list row: queued, not run yet, last run failed, or a dash.
+     *
+     * @param stdClass $chart The chart record.
+     * @param bool $queued Whether a run of this chart is waiting for cron.
+     * @return string
+     */
+    protected function row_state(stdClass $chart, bool $queued): string {
+        if ($queued) {
+            return get_string('queued', 'local_aicharts');
+        }
+        if ($chart->runmode === 'live' || !$chart->enabled) {
+            return '—';
+        }
+
+        $results = result_store::list_for_chart((int) $chart->id);
+        if (!$results) {
+            return get_string('notrunyet', 'local_aicharts');
+        }
+        if (reset($results)->status !== 'ok') {
+            return get_string('lastrunfailed', 'local_aicharts');
+        }
+
+        return '—';
     }
 
     /**
@@ -458,54 +527,39 @@ class dashboard implements renderable, templatable {
      * @param renderer_base $output The renderer.
      * @param stdClass $chart The chart record.
      * @param bool $canmanage Whether the user may act on the chart.
-     * @param bool $queued Whether a run of this chart is waiting for cron.
      * @return string The rendered menu, empty when it holds no action.
      */
-    protected function menu(renderer_base $output, stdClass $chart, bool $canmanage, bool $queued): string {
+    protected function menu(renderer_base $output, stdClass $chart, bool $canmanage): string {
         if (!$canmanage) {
             return '';
         }
 
         $menu = new action_menu();
         $menu->add(new link_secondary(
-            new url('/local/aicharts/index.php'),
+            new url('/local/aicharts/edit.php', ['id' => (int) $chart->id]),
             new pix_icon('t/edit', ''),
-            get_string('edit'),
-            ['data-action' => 'editchart', 'data-id' => (int) $chart->id]
+            get_string('edit')
+        ));
+        $menu->add(new link_secondary(
+            new url('/local/aicharts/edit.php', ['id' => (int) $chart->id, 'duplicate' => 1]),
+            new pix_icon('t/copy', ''),
+            get_string('duplicate')
+        ));
+        $menu->add(new link_secondary(
+            self::view_url($chart),
+            new pix_icon('i/preview', ''),
+            get_string('view', 'local_aicharts')
         ));
         $menu->add(new link_secondary(
             new url('/local/aicharts/index.php'),
-            new pix_icon('t/copy', ''),
-            get_string('duplicate'),
-            ['data-action' => 'duplicatechart', 'data-id' => (int) $chart->id]
-        ));
-        if ($chart->runmode !== 'live') {
-            $attributes = [
-                'data-action' => 'runnow',
+            new pix_icon($chart->enabled ? 't/stop' : 't/play', ''),
+            get_string($chart->enabled ? 'pause' : 'resume', 'local_aicharts'),
+            [
+                'data-action' => 'togglechart',
                 'data-id' => (int) $chart->id,
-            ];
-            if ($queued) {
-                $attributes['class'] = 'disabled';
-                $attributes['aria-disabled'] = 'true';
-            }
-            $menu->add(new link_secondary(
-                new url('/local/aicharts/index.php'),
-                new pix_icon('t/play', ''),
-                get_string('runnow', 'local_aicharts'),
-                $attributes
-            ));
-
-            $menu->add(new link_secondary(
-                new url('/local/aicharts/index.php'),
-                new pix_icon($chart->enabled ? 't/stop' : 't/play', ''),
-                get_string($chart->enabled ? 'pause' : 'resume', 'local_aicharts'),
-                [
-                    'data-action' => 'togglechart',
-                    'data-id' => (int) $chart->id,
-                    'data-enabled' => $chart->enabled ? 0 : 1,
-                ]
-            ));
-        }
+                'data-enabled' => $chart->enabled ? 0 : 1,
+            ]
+        ));
 
         $menu->add(new link_secondary(
             new url('/local/aicharts/index.php'),

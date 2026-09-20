@@ -36,6 +36,9 @@ class response_parser {
     /** @var string Markdown code fence some models wrap the answer in. */
     public const FENCE = '```';
 
+    /** @var int Characters of the request kept as the chart name when the answer names nothing. */
+    public const FALLBACK_NAME_LENGTH = 60;
+
     /**
      * Parse an answer.
      *
@@ -43,26 +46,33 @@ class response_parser {
      * an object that claims a chart but does not carry one is invalid.
      *
      * @param string $content Raw answer text.
+     * @param string $fallbackname Request text used to name the chart when the answer names nothing.
      * @return array ['status' => string] for a refusal, otherwise plus 'name', 'sql', 'params',
      *               'chart' (chart_spec), 'chartjson', 'notes'.
      * @throws moodle_exception When the answer claims a chart but does not match the schema.
      */
-    public static function parse(string $content): array {
-        $decoded = json_decode(self::strip_fence($content), true);
+    public static function parse(string $content, string $fallbackname = ''): array {
+        $decoded = self::unwrap(json_decode(self::strip_fence($content), true));
         if (!is_array($decoded) || !isset($decoded['status']) || $decoded['status'] !== self::STATUS_CHART) {
             return ['status' => self::STATUS_REFUSED];
         }
 
-        $name = self::string_value($decoded, 'name');
-        if ($name === '') {
-            self::reject('the name is missing');
-        }
         $sql = self::string_value($decoded, 'sql');
         if ($sql === '') {
             self::reject('the query is missing');
         }
         if (!isset($decoded['chart']) || !is_array($decoded['chart'])) {
             self::reject('the chart definition is missing');
+        }
+        $name = self::string_value($decoded, 'name');
+        if ($name === '') {
+            $name = self::string_value($decoded['chart'], 'title');
+        }
+        if ($name === '') {
+            $name = \core_text::substr(trim($fallbackname), 0, self::FALLBACK_NAME_LENGTH);
+        }
+        if ($name === '') {
+            self::reject('the name is missing');
         }
 
         return [
@@ -74,6 +84,24 @@ class response_parser {
             'chartjson' => json_encode($decoded['chart']),
             'notes' => self::string_value($decoded, 'notes'),
         ];
+    }
+
+    /**
+     * Parse an answer that holds only a chart object.
+     *
+     * @param string $content Raw answer text.
+     * @return chart_spec|null Null when the answer is a refusal or not a JSON object.
+     * @throws moodle_exception When the object is not a valid chart definition.
+     */
+    public static function parse_chart(string $content): ?chart_spec {
+        $decoded = json_decode(self::strip_fence($content), true);
+        if (!is_array($decoded) || ($decoded['status'] ?? '') === self::STATUS_REFUSED) {
+            return null;
+        }
+        if (isset($decoded['chart']) && is_array($decoded['chart'])) {
+            $decoded = $decoded['chart'];
+        }
+        return chart_spec::from_array($decoded);
     }
 
     /**
@@ -89,6 +117,22 @@ class response_parser {
         }
         $content = preg_replace('/^' . self::FENCE . '[a-z]*\s*/i', '', $content);
         return trim(preg_replace('/' . self::FENCE . '$/', '', trim($content)));
+    }
+
+    /**
+     * Take the answer out of a wrapper object with a single key, such as the schema name.
+     *
+     * @param mixed $decoded Decoded answer.
+     * @return mixed
+     */
+    protected static function unwrap($decoded) {
+        if (is_array($decoded) && count($decoded) === 1 && !isset($decoded['status'])) {
+            $inner = reset($decoded);
+            if (is_array($inner) && isset($inner['status'])) {
+                return $inner;
+            }
+        }
+        return $decoded;
     }
 
     /**

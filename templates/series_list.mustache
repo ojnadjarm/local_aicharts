@@ -1,0 +1,76 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/series_list
+
+    The series of the chart being built: one row each with its status, first SQL line and actions.
+
+    Context variables required for this template:
+    * series - The series, each with index, label, sql, status, upurl, downurl, removeurl, first and last.
+
+    Example context (json):
+    {
+        "series": [
+            {
+                "index": 0,
+                "label": "This year",
+                "sql": "SELECT c.fullname AS course, COUNT(*) AS enrolments FROM {course} c",
+                "status": "12 rows returned · 41 ms",
+                "upurl": "#",
+                "downurl": "#",
+                "removeurl": "#",
+                "first": true,
+                "last": false
+            }
+        ]
+    }
+}}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+    <h3 class="h4 mb-0">{{#str}}serieslist, local_aicharts{{/str}}</h3>
+    <button type="button" class="btn btn-secondary" data-action="addseries">
+        <i class="icon fa fa-plus" aria-hidden="true"></i>{{#str}}addseries, local_aicharts{{/str}}
+    </button>
+</div>
+<div class="local-aicharts-series d-flex flex-column gap-2 mb-2" data-region="aic-series">
+    {{#series}}
+        <div class="local-aicharts-series-row border rounded px-3 py-2" data-index="{{index}}">
+            <div class="d-flex align-items-center flex-wrap gap-2">
+                <span class="fw-medium">{{label}}</span>
+                <span class="text-muted small">{{status}}</span>
+                <span class="ms-auto d-flex gap-1">
+                    <button type="button" class="btn btn-link btn-sm" data-action="editseries" data-index="{{index}}">
+                        {{#str}}edit{{/str}}<span class="visually-hidden"> {{label}}</span>
+                    </button>
+                    <a class="btn btn-link btn-sm{{#first}} disabled{{/first}}" href="{{upurl}}"{{#first}} aria-disabled="true" tabindex="-1"{{/first}}
+                        aria-label="{{#str}}moveup, local_aicharts, {{label}}{{/str}}">
+                        <i class="icon fa fa-arrow-up m-0" aria-hidden="true"></i>
+                    </a>
+                    <a class="btn btn-link btn-sm{{#last}} disabled{{/last}}" href="{{downurl}}"{{#last}} aria-disabled="true" tabindex="-1"{{/last}}
+                        aria-label="{{#str}}movedown, local_aicharts, {{label}}{{/str}}">
+                        <i class="icon fa fa-arrow-down m-0" aria-hidden="true"></i>
+                    </a>
+                    <a class="btn btn-link btn-sm" href="{{removeurl}}">
+                        {{#str}}remove{{/str}}<span class="visually-hidden"> {{label}}</span>
+                    </a>
+                </span>
+            </div>
+            <div class="local-aicharts-series-sql text-muted small mt-1">
+                {{sql}}
+            </div>
+        </div>
+    {{/series}}
+</div>

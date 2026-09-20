@@ -33,6 +33,7 @@ class query_result {
      * @param int $durationms Time the query took.
      * @param string $status ok, validation_failed or db_error.
      * @param string $errormessage Sanitised detail of the failure, empty on success.
+     * @param string $errordetail What the database reported, empty when there is nothing to add.
      */
     protected function __construct(
         /** @var array Result rows, empty on error. */
@@ -47,6 +48,8 @@ class query_result {
         public readonly string $status = 'ok',
         /** @var string Sanitised detail of the failure, empty on success. */
         public readonly string $errormessage = '',
+        /** @var string What the database reported, empty when there is nothing to add. */
+        public readonly string $errordetail = '',
     ) {
     }
 
@@ -68,10 +71,16 @@ class query_result {
      * @param string $status validation_failed or db_error.
      * @param string $errormessage Sanitised detail, never the query or its parameters.
      * @param int $durationms Time spent before the failure.
+     * @param string $errordetail What the database reported, never the query or its parameters.
      * @return self
      */
-    public static function error(string $status, string $errormessage, int $durationms = 0): self {
-        return new self([], 0, false, $durationms, $status, $errormessage);
+    public static function error(
+        string $status,
+        string $errormessage,
+        int $durationms = 0,
+        string $errordetail = ''
+    ): self {
+        return new self([], 0, false, $durationms, $status, $errormessage, $errordetail);
     }
 
     /**

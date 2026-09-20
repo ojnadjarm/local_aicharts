@@ -37,7 +37,6 @@ final class queue_due_charts_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->setAdminUser();
         $DB->delete_records('local_aicharts_chart');
-        set_config('allowedtables', "role\nuser\n", 'local_aicharts');
         set_config('maxrowsmax', 500, 'local_aicharts');
         set_config('resultretention', 30, 'local_aicharts');
     }
@@ -55,8 +54,11 @@ final class queue_due_charts_test extends \advanced_testcase {
         $id = chart_repository::save((object) [
             'name' => 'Roles',
             'prompt' => 'roles',
-            'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
-            'params' => '{}',
+            'queries' => [[
+                'label' => 'Roles',
+                'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
+                'params' => '{}',
+            ]],
             'chartjson' => '{"type":"bar","labels":"shortname","series":["total"]}',
             'runmode' => $runmode,
             'runhour' => 0,

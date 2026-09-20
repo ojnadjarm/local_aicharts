@@ -28,7 +28,6 @@ final class sql_validator_test extends \advanced_testcase {
     protected function setUp(): void {
         parent::setUp();
         $this->resetAfterTest();
-        set_config('allowedtables', "user\ncourse\nuser_enrolments\nenrol\n", 'local_aicharts');
     }
 
     /**
@@ -61,11 +60,11 @@ final class sql_validator_test extends \advanced_testcase {
     }
 
     /**
-     * UNION and subqueries are fine while every table is allowed.
+     * UNION and subqueries are fine.
      *
      * @covers \local_aicharts\local\sql_validator::validate
      */
-    public function test_accepts_union_and_subquery_on_allowed_tables(): void {
+    public function test_accepts_union_and_subquery(): void {
         $this->assertNull($this->rejection(
             "SELECT 'course' AS kind, COUNT(id) AS total FROM {course}
              UNION ALL
@@ -121,14 +120,15 @@ final class sql_validator_test extends \advanced_testcase {
     }
 
     /**
-     * A table outside the allow-list, a prefixed name and a stray brace are rejected naming them.
+     * Any table may be read as a placeholder; a prefixed name and a stray brace are rejected naming them.
      *
      * @covers \local_aicharts\local\sql_validator::validate
      */
-    public function test_rejects_unlisted_table_and_names_it(): void {
-        $this->assertStringContainsString('"logstore_standard_log"', $this->rejection(
-            'SELECT id FROM {user} u JOIN {logstore_standard_log} l ON l.userid = u.id'
+    public function test_accepts_any_placeholder_table(): void {
+        $this->assertNull($this->rejection(
+            'SELECT id FROM {user} u JOIN {quiz_attempts} qa ON qa.userid = u.id'
         ));
+        $this->assertNull($this->rejection('SELECT name, value FROM {config}'));
         $this->assertStringContainsString('"mdl_user"', $this->rejection('SELECT id FROM mdl_user'));
         $this->assertStringContainsString('"user_enrolments"', $this->rejection(
             'SELECT id FROM {user} u LEFT JOIN user_enrolments ue ON ue.userid = u.id'

@@ -16,6 +16,9 @@
 
 namespace local_aicharts\task;
 
+use local_aicharts\local\chart_repository;
+use local_aicharts\local\point_store;
+
 /**
  * Tests for the generation log cleanup task.
  *
@@ -82,6 +85,37 @@ final class cleanup_runs_test extends \advanced_testcase {
         ob_end_clean();
 
         $this->assertSame(1, $DB->count_records('local_aicharts_run'));
+    }
+
+    /**
+     * The points of each trend chart are pruned to the chart's retention.
+     *
+     * @covers \local_aicharts\task\cleanup_runs::execute
+     */
+    public function test_prunes_trend_points(): void {
+        global $DB;
+
+        $this->setAdminUser();
+        set_config('logretentiondays', 0, 'local_aicharts');
+        $id = chart_repository::save((object) [
+            'name' => 'Trend',
+            'prompt' => 'trend',
+            'queries' => [['label' => 'Active', 'sqltext' => 'SELECT 1', 'params' => '{}']],
+            'chartjson' => '{"type":"line","labelcolumn":"runtime","series":[{"column":"Active"}]}',
+            'kind' => 'trend',
+            'pointsretention' => 31,
+        ]);
+        $chart = chart_repository::get($id);
+        for ($i = 1; $i <= 40; $i++) {
+            point_store::append($chart, ['Active' => $i], $i * 100, null);
+        }
+
+        ob_start();
+        (new cleanup_runs())->execute();
+        ob_end_clean();
+
+        $this->assertSame(31, $DB->count_records('local_aicharts_point', ['chartid' => $id]));
+        $this->assertSame(1000, (int) $DB->get_field_sql('SELECT MIN(timepoint) FROM {local_aicharts_point}'));
     }
 
     /**

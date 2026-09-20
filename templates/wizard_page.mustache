@@ -1,0 +1,102 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template local_aicharts/wizard_page
+
+    One page of the chart wizard: heading, step strip, the step form and the button row.
+
+    Context variables required for this template:
+    * title - Heading of the wizard.
+    * steps - The steps, each with number, name, done, current and url.
+    * stepof - The "Step n of total" line.
+    * formhtml - The rendered step form.
+    * asidehtml - What is shown beside the form, empty for nothing.
+    * formid - Id of the step form the Next button submits.
+    * hasnext - Whether the step has a Next button.
+    * hassave - Whether the step offers Save.
+    * backurl - URL of the previous step, empty on the first.
+    * cancelurl - URL that drops the wizard.
+    * token - The wizard token.
+    * url - URL of the current step.
+    * timeout - Seconds the assistant may take.
+    * querytimeout - Seconds a query may take.
+
+    Example context (json):
+    {
+        "title": "Add chart",
+        "steps": [
+            {"number": 1, "name": "Kind", "done": true, "current": false, "url": "/local/aicharts/edit.php?w=abc&step=1"},
+            {"number": 2, "name": "Data", "done": false, "current": true, "url": ""}
+        ],
+        "stepof": "Step 2 of 5 — what the chart is built from.",
+        "formhtml": "<form></form>",
+        "asidehtml": "",
+        "formid": "local-aicharts-step",
+        "hasnext": true,
+        "hassave": false,
+        "backurl": "/local/aicharts/edit.php?w=abc&step=1",
+        "cancelurl": "/local/aicharts/edit.php?w=abc&action=discard&sesskey=x",
+        "token": "abc",
+        "url": "/local/aicharts/edit.php?w=abc&step=2",
+        "timeout": 60,
+        "querytimeout": 20
+    }
+}}
+<div class="local-aicharts-wizard" data-region="aic-wizard" data-token="{{token}}" data-url="{{url}}" data-timeout="{{timeout}}" data-querytimeout="{{querytimeout}}">
+    <h2 class="h2 mb-3">
+        <i class="icon fa fa-chart-column" aria-hidden="true"></i>{{title}}
+    </h2>
+    {{> local_aicharts/wizard_steps}}
+    <p class="text-muted small mb-3">{{stepof}}</p>
+    {{#asidehtml}}
+        <div class="local-aicharts-2col">
+            <div>{{{asidehtml}}}</div>
+            <div>{{{formhtml}}}</div>
+        </div>
+    {{/asidehtml}}
+    {{^asidehtml}}
+        {{{formhtml}}}
+    {{/asidehtml}}
+    <div class="local-aicharts-wizard-buttons d-flex flex-wrap align-items-center gap-2">
+        {{#backurl}}
+            <a class="btn btn-secondary" href="{{backurl}}">
+                <i class="icon fa fa-arrow-left" aria-hidden="true"></i>{{#str}}back, local_aicharts{{/str}}
+            </a>
+        {{/backurl}}
+        {{^backurl}}
+            <span class="btn btn-secondary disabled" aria-disabled="true">
+                <i class="icon fa fa-arrow-left" aria-hidden="true"></i>{{#str}}back, local_aicharts{{/str}}
+            </span>
+        {{/backurl}}
+        {{#hasnext}}
+            <button type="submit" class="btn btn-primary" form="{{formid}}">
+                {{#str}}next, local_aicharts{{/str}} <i class="icon fa fa-arrow-right m-0" aria-hidden="true"></i>
+            </button>
+        {{/hasnext}}
+        {{#hassave}}
+            <button type="submit" class="btn btn-primary" form="{{formid}}">
+                <i class="icon fa fa-floppy-disk" aria-hidden="true"></i>{{#str}}savechart, local_aicharts{{/str}}
+            </button>
+        {{/hassave}}
+        <a class="btn btn-link ms-auto" href="{{cancelurl}}">{{#str}}cancel{{/str}}</a>
+    </div>
+</div>
+{{#js}}
+    require(['local_aicharts/wizard'], function(Wizard) {
+        Wizard.init();
+    });
+{{/js}}

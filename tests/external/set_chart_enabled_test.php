@@ -47,8 +47,11 @@ final class set_chart_enabled_test extends \advanced_testcase {
         $id = chart_repository::save((object) [
             'name' => 'Roles',
             'prompt' => 'roles',
-            'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
-            'params' => '{}',
+            'queries' => [[
+                'label' => 'Roles',
+                'sqltext' => 'SELECT shortname, 1 AS total FROM {role}',
+                'params' => '{}',
+            ]],
             'chartjson' => '{"type":"bar","labels":"shortname","series":["total"]}',
             'runmode' => $runmode,
             'runhour' => 0,
@@ -106,15 +109,20 @@ final class set_chart_enabled_test extends \advanced_testcase {
     }
 
     /**
-     * A live chart has no schedule to pause.
+     * A live chart can be paused and resumed too.
      *
      * @covers \local_aicharts\external\set_chart_enabled::execute
      */
-    public function test_live_chart_is_rejected(): void {
+    public function test_live_chart_can_be_paused(): void {
         $chart = $this->create_chart('live');
 
-        $this->expectException(\moodle_exception::class);
-        set_chart_enabled::execute((int) $chart->id, false);
+        $returned = set_chart_enabled::execute((int) $chart->id, false);
+
+        $this->assertFalse($returned['enabled']);
+        $this->assertEquals(0, chart_repository::get((int) $chart->id)->enabled);
+
+        set_chart_enabled::execute((int) $chart->id, true);
+        $this->assertEquals(1, chart_repository::get((int) $chart->id)->enabled);
     }
 
     /**

@@ -44,37 +44,40 @@ final class prompt_builder_test extends \advanced_testcase {
         return chart_repository::save((object) [
             'name' => $name,
             'prompt' => $prompt,
-            'sqltext' => 'SELECT c.fullname, COUNT(ue.id) AS total FROM {course} c',
-            'params' => '{"since":123}',
+            'queries' => [[
+                'label' => $name,
+                'sqltext' => 'SELECT c.fullname, COUNT(ue.id) AS total FROM {course} c',
+                'params' => '{"since":123}',
+            ]],
             'chartjson' => '{"type":"bar","title":"' . $name . '","labelcolumn":"fullname","series":[]}',
         ]);
     }
 
     /**
-     * The instructions carry the allowed tables, their hints and the SQL rules.
+     * The instructions carry the catalogued tables, their hints and the SQL rules.
      *
      * @covers \local_aicharts\local\prompt_builder::system_prompt
      * @covers \local_aicharts\local\schema_catalogue::hint_block
-     * @covers \local_aicharts\local\schema_catalogue::allowed_tables
+     * @covers \local_aicharts\local\schema_catalogue::hints
      */
-    public function test_system_prompt_lists_allowed_tables_and_sql_rules(): void {
+    public function test_system_prompt_lists_catalogued_tables_and_sql_rules(): void {
         global $DB;
 
         $this->resetAfterTest();
-        set_config('allowedtables', "user\ncourse\n\nmy_own_table", 'local_aicharts');
         set_config('extrainstructions', 'Ignore test accounts.', 'local_aicharts');
 
         $prompt = prompt_builder::system_prompt();
 
         $this->assertStringContainsString('- {user}: id, username', $prompt);
         $this->assertStringContainsString('- {course}: id, category', $prompt);
-        $this->assertStringContainsString('- {my_own_table}', $prompt);
-        $this->assertStringNotContainsString('{cohort}', $prompt);
+        $this->assertStringContainsString('- {quiz_attempts}: id, quiz', $prompt);
+        $this->assertStringContainsString('- {cohort}: id, contextid', $prompt);
         $this->assertStringContainsString('One SELECT statement', $prompt);
         $this->assertStringContainsString('Never write LIMIT, OFFSET or FETCH', $prompt);
         $this->assertStringContainsString('Never write a colon inside a quoted string', $prompt);
         $this->assertStringContainsString('The database family is ' . $DB->get_dbfamily(), $prompt);
-        $this->assertStringContainsString('{"status":"refused"}', $prompt);
+        $this->assertStringContainsString('{"status":"refused","name":null,"sql":null,"params":null,"chart":null,', $prompt);
+        $this->assertStringContainsString('When status is chart, name, sql and chart must be filled.', $prompt);
         $this->assertStringContainsString('Ignore test accounts.', $prompt);
     }
 
@@ -104,26 +107,60 @@ final class prompt_builder_test extends \advanced_testcase {
     }
 
     /**
-     * The hints typed with the request are sent with it.
+     * The query the series already holds is sent with the request.
      *
      * @covers \local_aicharts\local\prompt_builder::build_messages
      */
     public function test_hints_included(): void {
         $this->resetAfterTest();
 
-        $messages = prompt_builder::build_messages(
-            'active users per month',
-            'use user_lastaccess',
-            'line chart',
-            'last 6 months'
-        );
+        $messages = prompt_builder::build_messages('active users per month', 'SELECT 1');
 
         $request = end($messages)['content'];
         $this->assertStringStartsWith('<request>', $request);
         $this->assertStringContainsString('Request: active users per month', $request);
-        $this->assertStringContainsString('Data hint: use user_lastaccess', $request);
-        $this->assertStringContainsString('Chart hint: line chart', $request);
-        $this->assertStringContainsString('Query hint: last 6 months', $request);
+        $this->assertStringContainsString('Query hint: SELECT 1', $request);
         $this->assertStringEndsWith('</request>', $request);
+    }
+
+    /**
+     * The answer schema requires every property, the optional ones nullable, and embeds the chart schema.
+     *
+     * @covers \local_aicharts\local\prompt_builder::response_schema
+     */
+    public function test_response_schema_requires_every_property(): void {
+        $schema = prompt_builder::response_schema();
+
+        $this->assertSame(array_keys($schema['properties']), $schema['required']);
+        foreach (['name', 'sql', 'notes'] as $key) {
+            $this->assertSame(['string', 'null'], $schema['properties'][$key]['type']);
+        }
+        $this->assertSame(['object', 'null'], $schema['properties']['params']['type']);
+        $this->assertSame(['object', 'null'], $schema['properties']['chart']['type']);
+        $this->assertSame(prompt_builder::CHART_SCHEMA['required'], $schema['properties']['chart']['required']);
+        $this->assertSame(prompt_builder::CHART_SCHEMA['properties'], $schema['properties']['chart']['properties']);
+    }
+
+    /**
+     * A chart-only request lists the columns, the sample rows and the hint, and asks for the chart schema.
+     *
+     * @covers \local_aicharts\local\prompt_builder::chart_messages
+     */
+    public function test_chart_messages_list_columns(): void {
+        $rows = [['coursename' => 'Maths', 'total' => 4]];
+
+        $messages = prompt_builder::chart_messages(['coursename', 'total'], $rows, 'stacked bars', 'oneshot');
+
+        $this->assertSame(['system', 'user'], array_column($messages, 'role'));
+        $this->assertStringContainsString('"labelcolumn"', $messages[0]['content']);
+        $this->assertStringContainsString('{"status":"refused"}', $messages[0]['content']);
+        $this->assertStringNotContainsString('runtime', $messages[0]['content']);
+        $this->assertStringStartsWith('Columns: coursename, total', $messages[1]['content']);
+        $this->assertStringContainsString('Sample rows: [{"coursename":"Maths","total":4}]', $messages[1]['content']);
+        $this->assertStringEndsWith('Hint: stacked bars', $messages[1]['content']);
+
+        $messages = prompt_builder::chart_messages(['runtime', 'Active'], [], '', 'trend');
+        $this->assertStringContainsString('labelcolumn is "runtime"', $messages[0]['content']);
+        $this->assertStringNotContainsString('Hint:', $messages[1]['content']);
     }
 }
